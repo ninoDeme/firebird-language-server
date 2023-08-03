@@ -29,7 +29,7 @@ documents.onDidChangeContent((event) => {
     const res = new Parser(connection);
     try {
         const _parsed = res.parse(event.document);
-        console.log(_parsed[0]);
+        console.log(res);
         try {
             connection.console.log(util.inspect(_parsed));
         } catch (e: any) {
