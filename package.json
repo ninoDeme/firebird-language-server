@@ -1,0 +1,29 @@
+{
+  "name": "firebird-language-server",
+  "version": "0.0.1",
+  "description": "Language Server for Firebird SQL",
+  "main": "build/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "npm run build && npx nodemon -- -- --socket=4777",
+    "dev:start": "npx nodemon"
+  },
+  "author": "ninoDeme",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "node-firebird": "^1.1.5",
+    "vscode-jsonrpc": "^8.1.0",
+    "vscode-languageserver": "^8.1.0",
+    "vscode-languageserver-protocol": "^3.17.3",
+    "vscode-languageserver-textdocument": "^1.0.8",
+    "vscode-languageserver-types": "^3.17.3"
+  }
+}
