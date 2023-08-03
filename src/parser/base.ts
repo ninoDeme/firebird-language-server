@@ -105,7 +105,7 @@ export class BaseLiteral extends BaseToken implements Literal {
     static match(currText: string): string | undefined {
         throw new Error('Not Implemented');
     };
-    type = SQlType.Never;
+    type = ParserType.Never;
 }
 
 export interface Table {
@@ -133,15 +133,15 @@ export interface Problem {
 }
 
 export interface Literal extends Token {
-    readonly type: SQlType;
+    readonly type: ParserType;
 }
 
-export enum SQlType {
+export enum ParserType {
     Integer,       // 0, -34, 45, 0X080000000;
     FixedPoint,    // 0.0, -3.14
     FloatingPoint, // 3.23e-23;
     String,        // 'text', 'don''t!';
-    BinaryString,  // x'48656C6C6F20776F726C64'
+    HexString,  // x'48656C6C6F20776F726C64'
     Date,          // DATE '2018-01-19';
     Time,          // TIME '15:12:56';
     Timestamp,     // TIMESTAMP '2018-01-19 13:32:02';
