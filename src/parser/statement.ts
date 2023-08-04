@@ -1,9 +1,7 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
-import {Parser} from '.';
+import {Parser, statement} from '.';
 import {BaseState, State} from './base';
-import {SelectStatement} from './select';
 import {REGULAR_IDENTIFIER} from './symbols';
-import {consumeWhiteSpace, consumeComments, nextTokenError} from './utils';
 
 export class Statement extends BaseState {
 
@@ -54,17 +52,4 @@ export class UnknownStatement extends Statement {
         });
         this.flush();
     }
-}
-
-export function statement(parser: Parser, start: number = parser.index, subQuery?: boolean): Statement {
-    consumeWhiteSpace(parser);
-    consumeComments(parser);
-    const currText = parser.currText;
-    if (/^select/i.test(currText)) {
-        return new SelectStatement(parser, start);
-    }
-    else if (/^(;|$)/.test(currText) || subQuery && /^\)/.test(currText)) {
-        return new EmptyStatement(parser);
-    }
-    return new UnknownStatement(parser, start);
 }

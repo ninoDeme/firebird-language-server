@@ -1,16 +1,16 @@
-import {Parser, table} from '.';
-import {BaseState, BaseToken, Table} from './base';
+import {type Parser} from '.';
+import {BaseState, BaseTable, BaseToken, ParserType, State, Table, Token} from './base';
+import {literal} from './literals';
 import {Statement} from './statement';
-import {REGULAR_IDENTIFIER} from './symbols';
-import {consumeWhiteSpace, consumeComments, nextTokenError} from './utils';
+import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
+import {consumeCommentsAndWhitespace, nextTokenError} from './utils';
 import {OutputColumn} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement {
 
     parse = () => {
-        consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
         const currText = this.parser.currText;
 
         let end = this.parser.currText.match(/^[\s]*?(;|$)/)?.[0];
@@ -119,8 +119,7 @@ class FirstAndSkip extends BaseToken {
             throw new Error('first or skip token not present');
         }
         parser.index += text.length;
-        consumeWhiteSpace(parser);
-        consumeComments(parser);
+        consumeCommentsAndWhitespace(parser);
         let delimiter: string | undefined;
         if (parser.currText.startsWith('(')) {
             let index = 0;
@@ -157,25 +156,35 @@ class FirstAndSkip extends BaseToken {
             delimiter = `:${identifier}`;
             end = parser.index + delimiter.length;
         } else {
-            delimiter = parser.currText.match(/^\S+/)?.[0];
-            if (delimiter != null && !isNaN(parseInt(delimiter))) {
-                if (parseInt(delimiter) < 0) {
+            let lit = literal(parser) 
+            if (lit) {
+                if (lit.type === ParserType.Integer && parseInt(lit.text) < 0) {
                     parser.problems.push({
-                        start: parser.index - 1,
-                        end: parser.index + delimiter.length,
+                        start: lit.start,
+                        end: lit.end,
                         message: "Argument can't be negative"
                     });
+                } else if (lit.type !== ParserType.Integer) {
+                    parser.problems.push({
+                        start: lit.start,
+                        end: lit.end,
+                        message: `Argument literal must be an integer, found ${ParserType[lit.type]}`
+                    });
                 }
+                delimiter = lit.text;
                 end = parser.index + delimiter.length;
-            } else if (delimiter === '?') {
+            } else if (parser.currText.startsWith('?')) {
+                delimiter = '?';
                 end = parser.index + delimiter.length;
             } else {
+                delimiter = parser.currText.match(/^[\w$]+|./)?.[0];
                 parser.problems.push({
-                    start: parser.index - 1,
+                    start: parser.index,
                     end: parser.index + (delimiter?.length ?? 0),
                     message: `Invalid Token: ${delimiter}`
                 });
                 if (delimiter == null) delimiter = '';
+                end = parser.index;
             }
         }
         parser.index += delimiter.length;
@@ -237,8 +246,7 @@ class FromSelect extends BaseState {
 
     source?: Table;
     parse() {
-        consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
 
         if (/^(natural|join|inner|left|right|full)([^\w$]|$)/i.test(this.parser.currText)) {
             this.parser.state.push(new JoinFrom(this.parser, this));
@@ -257,4 +265,85 @@ class FromSelect extends BaseState {
         super(parser);
         this.parser.index += 'from'.length;
     }
+}
+
+export function table(parser: Parser) {
+    consumeCommentsAndWhitespace(parser);
+    const currText = parser.currText;
+    if (new RegExp(`^${REGULAR_IDENTIFIER}\\s*?\\(.*?\\)`).test(currText)) {
+        return new Procedure(parser);
+    }
+    else if (currText.startsWith('(')) {
+        return new DerivedTable(parser);
+    } else if (new RegExp(`^${REGULAR_IDENTIFIER}([^\\w$]|$)`).test(currText)) {
+        return new BaseTable(parser);
+    }
+    nextTokenError(parser, 'Invalid Token');
+    return new UnknownTable(parser);
+}
+
+export class UnknownTable extends BaseTable {
+    parse() {
+        const token = this.parser.currText.match(new RegExp(`^[^;|\\s]`))?.[0];
+        this.start = this.parser.index;
+        this.name = token;
+        this.parser.index += token?.length ?? 1;
+
+        this.parseAlias();
+
+        this.flush();
+    }
+
+    parseAlias() {
+
+        consumeCommentsAndWhitespace(this.parser);
+
+        let hasAS = false;
+        if (this.parser.currText.match(/^as\s/i)) {
+            this.parser.index += 2;
+            consumeCommentsAndWhitespace(this.parser);
+            hasAS = true;
+        }
+
+        const token = this.parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}`))?.[0];
+
+        if (token && !RESERVED_WORDS.has(token.toUpperCase())) {
+            if (hasAS) {
+                this.parser.problems.push({
+                    start: this.parser.index,
+                    end: this.parser.index + token.length,
+                    message: `Invalid alias, ${token} is a reserved keyword`
+                });
+            }
+            this.alias = token;
+        }
+    }
+}
+
+export class DerivedTable extends BaseTable implements State {
+    select?: SelectStatement;
+
+    parse() {
+        consumeCommentsAndWhitespace(this.parser);
+        if (this.select) {
+            if (this.parser.currText.startsWith(')')) {
+                this.parser.index++;
+                this.end = this.parser.index;
+                this.text = this.parser.text.substring(this.start, this.end);
+                this.flush();
+            } else {
+                nextTokenError(this.parser, `Unknown Token`);
+            }
+        }
+    }
+}
+
+export class Procedure extends BaseTable {
+
+    args: Token[] = [];
+
+    parse() {
+        throw new Error('not implemented');
+    }
+
 }

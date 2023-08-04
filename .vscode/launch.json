@@ -14,7 +14,7 @@
                 "<node_internals>/**"
             ],
             "type": "node",
-            "preLaunchTask": "server: watch"
+            // "preLaunchTask": "server: watch"
         },
     ]
 }

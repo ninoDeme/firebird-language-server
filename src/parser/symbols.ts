@@ -1,7 +1,7 @@
-export const REGULAR_IDENTIFIER = '[A-z][\\w$]{0,62}';
-export const NON_REGULAR_IDENTIFIER = '"([^"]{1,63}?) *"';
+export const REGULAR_IDENTIFIER = '([A-z][\\w$]*)';
+export const NON_REGULAR_IDENTIFIER = '"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))';
 
-export const SPECIAL_CHARACTERS = [
+export const SPECIAL_CHARACTERS = new Set([
     '"',
     '%',
     '&',
@@ -25,7 +25,7 @@ export const SPECIAL_CHARACTERS = [
     '^',
     '{',
     '}'
-];
+]);
 
 export const SPECIAL_CHARACTERS_REGEX = `["%&'()*+,\\-./:;<=>?\\[\\]^{}]`;
 export const SPECIAL_CHARACTERS_REGEX2 = `("|%|&|'|\\(|\\)|\\*|\\+|,|-|\\.|\\/|:|;|<|=|>|\\?|\\[|\\]|\\^|{|})`;
@@ -69,7 +69,7 @@ export const COMPARISON_OPERATORS = [
     '^<',
 ];
 
-export const RESERVED_WORDS = [
+export const RESERVED_WORDS = new Set([
     'ADD',
     'ADMIN',
     'ALL',
@@ -288,9 +288,9 @@ export const RESERVED_WORDS = [
     'WITH',
     'WITHOUT',
     'YEAR',
-];
+]);
 
-const KEYWORDS = [
+const KEYWORDS = new Set([
     '!<',
     '^<',
     '^=',
@@ -799,4 +799,4 @@ const KEYWORDS = [
     'YEAR',
     'YEARDAY',
     'ZONE',
-];
+]);

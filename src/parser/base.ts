@@ -1,7 +1,7 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
 import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
-import {consumeWhiteSpace, consumeComments, nextTokenError} from './utils';
+import {consumeCommentsAndWhitespace} from './utils';
 
 export class BaseState implements State, Token {
     parser: Parser;
@@ -22,9 +22,9 @@ export class BaseState implements State, Token {
 }
 
 export class BaseToken implements Token {
-    text?: string;
-    start?: number;
-    end?: number;
+    text: string;
+    start: number;
+    end: number;
 
     constructor(token: Token);
     constructor(token: string, parser: Parser);
@@ -39,6 +39,9 @@ export class BaseToken implements Token {
                 this.start = parser.index;
                 parser.index += token.length;
                 this.end = parser.index;
+            } else {
+                this.start = 0;
+                this.end = this.text.length;
             }
         }
     }
@@ -64,20 +67,18 @@ export class BaseTable extends BaseState implements Table {
 
     parseAlias() {
 
-        consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
 
         let hasAS = false;
         if (this.parser.currText.match(/^as([^\w$]|$)/i)) {
             this.parser.index += 2;
-            consumeWhiteSpace(this.parser);
-            consumeComments(this.parser);
+            consumeCommentsAndWhitespace(this.parser);
             hasAS = true;
         }
 
         const token = this.parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}`))?.[0];
 
-        if (token && !RESERVED_WORDS.includes(token.toUpperCase())) {
+        if (token && !RESERVED_WORDS.has(token.toUpperCase())) {
             this.alias = token;
         } else {
             if (hasAS) {
@@ -102,7 +103,7 @@ export class BaseTable extends BaseState implements Table {
 }
 
 export class BaseLiteral extends BaseToken implements Literal {
-    static match(currText: string): string | undefined {
+    static match(parser: Parser): unknown | undefined {
         throw new Error('Not Implemented');
     };
     type = ParserType.Never;
@@ -120,9 +121,9 @@ export interface State {
 }
 
 export interface Token {
-    text?: string;
-    start?: number;
-    end?: number;
+    text: string;
+    start: number;
+    end: number;
 }
 
 export interface Problem {

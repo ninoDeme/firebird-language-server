@@ -24,17 +24,16 @@ documents.onDidOpen((event) => {
 });
 
 documents.onDidChangeContent((event) => {
-    connection.console.log('Document changed 2');
-    connection.console.log(`${event.document.getText()}`);
-    const res = new Parser(connection);
+    connection.console.log(`${new Date().toLocaleTimeString()} - Document changed ${event.document.uri}`);
+    const res = new Parser(event.document);
     try {
-        const _parsed = res.parse(event.document);
+        res.parse();      
         console.log(res);
-        try {
-            connection.console.log(util.inspect(_parsed));
-        } catch (e: any) {
-            connection.console.error(e?.message ?? e.toString());
-        }
+        // try {
+        //     connection.console.log(util.inspect(_parsed));
+        // } catch (e: any) {
+        //     connection.console.error(e?.message ?? e.toString());
+        // }
         connection.sendDiagnostics({
             uri: event.document.uri,
             diagnostics: res.problems.map((prob => {
@@ -77,4 +76,5 @@ connection.onInitialize((params) => {
         }
     };
 });
+
 connection.listen();

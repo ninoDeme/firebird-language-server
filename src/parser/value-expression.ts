@@ -3,7 +3,7 @@ import {Parser} from '.';
 import {BaseState, BaseToken, Token} from './base';
 import {SelectStatement} from './select';
 import {REGULAR_IDENTIFIER} from './symbols';
-import {consumeWhiteSpace, consumeComments, nextTokenError} from './utils';
+import {consumeWhiteSpace, consumeCommentsAndWhitespace, nextTokenError} from './utils';
 
 export class ValueExpression extends BaseState {
 
@@ -19,7 +19,7 @@ export class ValueExpression extends BaseState {
     */
     parse() {
         consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
 
         if (!this.start) this.start = this.parser.index;
 
@@ -74,7 +74,7 @@ export class OutputColumn extends BaseState {
      */
     parse() {
         consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
 
         const isFrom = /^from([^\w$]|$)/.test(this.parser.currText);
         const isComma = this.parser.currText.startsWith(',');
@@ -127,7 +127,7 @@ export class IdentifierStar extends BaseState {
         this.text = text;
 
         consumeWhiteSpace(this.parser);
-        consumeComments(this.parser);
+        consumeCommentsAndWhitespace(this.parser);
         if (!/^(from(?=[^\w$]|$)|,|\)|$|;)/.test(this.parser.currText)) {
             nextTokenError(this.parser, `Unknown Token`);
         }
