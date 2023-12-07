@@ -3,7 +3,6 @@ import { createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Parser } from './parser';
 
-import util from 'util'
 import * as inspector from 'node:inspector';
 
 // Creates the LSP connection

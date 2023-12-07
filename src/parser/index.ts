@@ -41,17 +41,13 @@ export class Parser {
             this.state = [statement(this)];
 
             while (this.state.length > 0) {
-                this.next();
+                this.state[this.state.length - 1].parse();
             }
 
         } catch (e) {
             console.error(e);
         }
         return this.parsed;
-    }
-
-    next() {
-        this.state[this.state.length - 1].parse();
     }
 
     clone() {

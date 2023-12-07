@@ -16,5 +16,12 @@
             "type": "node",
             // "preLaunchTask": "server: watch"
         },
+        {
+            "name": "Test CLI",
+            "type": "node",
+            "request": "launch",
+            "program": "./build/cli.js",
+            "args": ["./teste.sql"]
+        }
     ]
 }

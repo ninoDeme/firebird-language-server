@@ -41,7 +41,7 @@ export class ValueExpression extends BaseState {
                 })
             }
             this.parser.index += nextParenthesis?.index ?? this.parser.currText.length;
-        } else if (/^(;|$|,|from(?=[^\w$]|$)|\))/.test(currText)){
+        } else if (/^(;|$|,|from(?=[^\w$]|$)|\))/i.test(currText)){
             this.end = this.parser.index;
             this.text = this.parser.text.substring(this.start, this.end);
             this.flush();
@@ -76,9 +76,9 @@ export class OutputColumn extends BaseState {
         consumeWhiteSpace(this.parser);
         consumeCommentsAndWhitespace(this.parser);
 
-        const isFrom = /^from([^\w$]|$)/.test(this.parser.currText);
+        const isFrom = /^from([^\w$]|$)/i.test(this.parser.currText);
         const isComma = this.parser.currText.startsWith(',');
-        if (isFrom || isComma) {
+        if (isFrom || isComma || this.parser.index >= this.parser.currText.length) {
             if (isComma) {
                 this.parser.index++;
             }

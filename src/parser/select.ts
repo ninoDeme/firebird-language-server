@@ -1,5 +1,5 @@
 import {type Parser} from '.';
-import {BaseState, BaseTable, BaseToken, ParserType, State, Table, Token} from './base';
+import {BaseState, BaseTable, BaseToken, JoinType, ParserType, State, Table, Token} from './base';
 import {literal} from './literals';
 import {Statement} from './statement';
 import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
@@ -229,10 +229,20 @@ class JoinFrom extends BaseState {
     }
 
     parse() {
-        // TODO: Parse Join
-        throw new Error('not implemented');
+        consumeCommentsAndWhitespace(this.parser);
+
+        if (!this.source) {
+            let match: string | undefined;
+            if (match = /^(natural|inner|left|right|full)([^\w$]|$)/i.exec(this.parser.currText)?.[0]) {
+                this.type = match as JoinType;
+            } else if (match = /^(join)([^\w$]|$)/i.exec(this.parser.currText)?.[0]) {
+                this.type ??= 'left';
+            }
+        }
     }
 
+    source?: Table;
+    type?: JoinType;
     flush() {
         this.parent.joins.push(this);
         super.flush();

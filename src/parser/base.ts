@@ -150,3 +150,5 @@ export enum ParserType {
     NullState,     // null
     Never
 }
+
+export type JoinType = 'natural' | 'inner' | 'left' | 'right' | 'full' | 'NATURAL' | 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
