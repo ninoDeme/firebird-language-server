@@ -3,7 +3,7 @@ import {BaseState, BaseTable, BaseToken, JoinType, ParserType, State, Table, Tok
 import {literal} from './literals';
 import {Statement} from './statement';
 import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
-import {consumeCommentsAndWhitespace, nextTokenError} from './utils';
+import {consumeCommentsAndWhitespace, nextToken, nextTokenError} from './utils';
 import {OutputColumn} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
@@ -235,9 +235,17 @@ class JoinFrom extends BaseState {
             let match: string | undefined;
             if (match = /^(natural|inner|left|right|full)([^\w$]|$)/i.exec(this.parser.currText)?.[0]) {
                 this.type = match as JoinType;
+                this.parser.index += match.length;
+                consumeCommentsAndWhitespace(this.parser)
+                if (!/^join([^\w$]|$)/i.test(this.parser.currText)) {
+                    nextTokenError(this.parser, 'Expected "join" found _');
+                } else {
+                    this.parser.index += 'join'.length;
+                }
             } else if (match = /^(join)([^\w$]|$)/i.exec(this.parser.currText)?.[0]) {
-                this.type ??= 'left';
+                this.type = 'left';
             }
+        } else {
         }
     }
 
