@@ -800,13 +800,6 @@ const KEYWORDS = new Set([
     'ZONE',
 ]);
 
-
-
-
-
-
-
-
 export enum TokenType {
     RegularIdentifier,
     ReservedWord,

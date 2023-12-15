@@ -1,8 +1,6 @@
 import {TextDocument} from 'vscode-languageserver-textdocument';
-import {statement} from '.';
-import {State, BaseState, BaseToken, Problem, Token} from './base';
-import {NON_REGULAR_IDENTIFIER, NON_REGULAR_IDENTIFIER_REGEX, OPERATORS, OPERATORS_REGEX, REGULAR_IDENTIFIER, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, TokenType, VARIABLE_REGEX} from './symbols';
-import {captureRejectionSymbol} from 'events';
+import {State, BaseState, Problem, Token} from './base';
+import {NON_REGULAR_IDENTIFIER_REGEX, OPERATORS_REGEX, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, TokenType, VARIABLE_REGEX} from './symbols';
 
 export class Lexer {
 
@@ -18,6 +16,7 @@ export class Lexer {
     state: State[] = [];
     parsed: BaseState[] = [];
     text: string;
+
     private _index: number;
     public get index(): number {
         return this._index;
@@ -26,6 +25,7 @@ export class Lexer {
         if (value !== this._index) this._currText = undefined;
         this._index = value;
     }
+
     comments: LexedToken[] = [];
     whiteSpace: LexedToken[] = [];
     tokens: LexedToken[] = [];
@@ -70,10 +70,6 @@ export class Lexer {
         let token = currText.match(/^\s+/)?.[0];
         if (token) {
             return this.token(token, TokenType.WhiteSpace);
-        }
-
-        if (token = currText.match(/^--.*|\/\*[\s\S]*?\*\//)?.[0]) {
-            return this.token(token, TokenType.Comment);
         }
 
         if (token = currText.match(/^\s+/)?.[0]) {
@@ -138,6 +134,10 @@ export class Lexer {
 
         if (currText.startsWith('.')) {
             return this.token('.', TokenType.Dot);
+        }
+
+        if (token = currText.match(/^--.*|\/\*[\s\S]*?\*\//)?.[0]) {
+            return this.token(token, TokenType.Comment);
         }
 
         if (token = currText.match(OPERATORS_REGEX)?.[0]) {
