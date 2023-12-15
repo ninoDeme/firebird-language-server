@@ -1,5 +1,5 @@
 import {Parser} from '.';
-import {BaseLiteral, Literal, ParserType as LiteralType, Token} from './base';
+import {BaseLiteral, Literal, ParserType as LiteralType} from './base';
 import {consumeCommentsAndWhitespace, nextTokenError} from './utils';
 
 class ParserInteger extends BaseLiteral {

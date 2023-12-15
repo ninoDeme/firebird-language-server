@@ -1,44 +1,44 @@
 import {type Parser} from '.';
-import {BaseState, BaseTable, BaseToken, JoinType, ParserType, State, Table, Token} from './base';
-import {literal} from './literals';
+import {BaseParenthesis, BaseState, BaseTable, BaseToken, EmptyParens, JoinType, ParenthesisBody, State, Table, Token} from './base';
 import {Statement} from './statement';
-import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
-import {consumeCommentsAndWhitespace, nextToken, nextTokenError} from './utils';
+import {LITERAL, REGULAR_IDENTIFIER, RESERVED_WORDS, TokenType} from './symbols';
+import {consumeCommentsAndWhitespace, nextTokenError} from './utils';
 import {OutputColumn} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement {
 
     parse = () => {
-        consumeCommentsAndWhitespace(this.parser);
-        const currText = this.parser.currText;
-
-        let end = this.parser.currText.match(/^[\s]*?(;|$)/)?.[0];
-        if (this.subQuery) {
-            if (end != null) {
+        const currToken = this.parser.currToken;
+        let end = false;
+        if (this.insideParenthesis && currToken.type === TokenType.RParen) {
+            end = true;
+        }
+        if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon) {
+            if (this.insideParenthesis) {
                 this.parser.problems.push({
                     start: this.start,
-                    end: this.start + end.length,
+                    end: currToken.end,
                     message: 'Unclosed Subquery',
                 });
-            } else {
-                end = this.parser.currText.match(/^[\s]*?\)/)?.[0];
             }
+            end = true;
         }
-        if (end != null) {
+        if (end) {
             if (!this.from) {
                 this.parser.problems.push({
                     start: this.start,
-                    end: this.parser.index + end.length,
+                    end: currToken.end,
                     message: 'Missing "FROM" expression in "SELECT" statement',
                 });
             }
-            this.parser.index += end.length;
-            this.end = this.parser.index;
+            this.end = this.parser.currToken.end;
+            this.parser.index++;
             this.text = this.parser.text.substring(this.start, this.end);
-            this.flush();
-        } else if (this.columnList.length === 0) {
-            if (/^first\s/i.test(currText)) {
+            return this.flush();
+        }
+        if (this.columnList.length === 0) {
+            if (currToken.text.toUpperCase() === 'FIRST') {
                 if (this.skip) {
                     nextTokenError(this.parser, '"FIRST" must be before "SKIP"');
                 }
@@ -46,39 +46,42 @@ export class SelectStatement extends Statement {
                     nextTokenError(this.parser, 'Duplicate "FIRST" statement');
                 }
                 this.first = new SelectFirst(this.parser);
-            } else if (/^skip\s/i.test(currText)) {
+                return this.parser.state.push(this.first);
+            } else if (currToken.text.toUpperCase() === 'SKIP') {
                 if (this.skip) {
                     nextTokenError(this.parser, 'Duplicate "SKIP" statement');
                 }
-                this.skip = new SelectSkip(this.parser);
-            } else if (/^from\s/i.test(currText)) {
-                if (this.columnList.length === 0) {
-                    this.parser.problems.push({
-                        start: this.parser.index,
-                        end: this.parser.index,
-                        message: 'No Columns in "SELECT" statement'
-                    });
-                }
-            } else if (currText.startsWith('*')) {
-                if (this.columnList.length) {
-                    nextTokenError(this.parser, `Columns and select star provided`);
-                }
-                this.star = new SelectStar(this.parser);
-            } else {
-                this.addNewColumn();
-            }
-        } else {
-            if (/^from\s/i.test(currText)) {
+                this.skip = new SelectFirst(this.parser);
+                return this.parser.state.push(this.skip);
+            } else if (currToken.text.toUpperCase() === 'FROM') {
+                this.parser.problems.push({
+                    start: this.parser.index,
+                    end: currToken.end,
+                    message: 'No Columns in "SELECT" statement'
+                });
                 const newFrom = new FromSelect(this.parser);
                 this.parser.state.push(newFrom);
                 this.from = newFrom;
-            } else if (/^skip\s/i.test(currText)) {
+            } else if (currToken.type === TokenType.Asterisk) {
+                if (this.columnList.length) {
+                    nextTokenError(this.parser, `Columns and select asterisk provided`);
+                }
+                this.star = new SelectStar(this.parser);
+            } else {
+                this.addNewColumn()
+            }
+        } else {
+            if (currToken.text.toUpperCase() === 'FROM') {
+                const newFrom = new FromSelect(this.parser);
+                this.parser.state.push(newFrom);
+                this.from = newFrom;
+            } else if (currToken.text.toUpperCase() === 'SKIP') {
                 nextTokenError(this.parser, '"SKIP" must come before column list');
-            } else if (/^first\s/i.test(currText)) {
+            } else if (currToken.text.toUpperCase() === 'FIRST') {
                 nextTokenError(this.parser, '"FIRST" must come before column list');
             } else {
                 nextTokenError(this.parser, 'Unknown Token');
-                this.parser.index += currText.match(/^(:?[\w$]+|$|.)/)?.[0]?.length ?? 1;
+                this.parser.index;
             }
         }
     };
@@ -99,7 +102,7 @@ export class SelectStatement extends Statement {
 
     constructor(parser: Parser, start?: number, subQuery?: boolean) {
         super(parser, start, subQuery);
-        this.parser.index += 'select'.length;
+        this.parser.index++;
     }
 }
 
@@ -108,103 +111,63 @@ export class SelectStatement extends Statement {
 // class SelectFetch extends BaseLimitToken {}
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select-first-skip
-class FirstAndSkip extends BaseToken {
-    delimiter: number | string;
+class FirstAndSkip extends BaseState {
+    delimiter?: Token;
+
+    parse = () => {
+        if (this.delimiter) return this.flush();
+        if (this.parser.currToken.type === TokenType.LParen) {
+            let token = this.parser.currToken;
+            this.parser.index++;
+            let body: ParenthesisBody;
+
+            if (this.parser.currToken.text.toUpperCase() === 'SELECT') {
+                body = new SelectStatement(this.parser);
+            } else {
+                body = new EmptyParens(this.parser);
+            }
+
+            let parens = new BaseParenthesis(token, body, this.parser);
+            this.parser.state.push(parens);
+            this.parser.state.push(body);
+            this.delimiter = parens;
+
+        } else if (this.parser.currToken.type === TokenType.Variable) {
+            this.parser.index++;
+            this.delimiter = this.parser.currToken;
+        } else {
+            if (LITERAL.has(this.parser.currToken.type)) {
+                if (this.parser.currToken.type !== TokenType.Integer) {
+                    this.parser.problems.push({
+                        start: this.parser.currToken.start,
+                        end: this.parser.currToken.end,
+                        message: `Argument literal must be an integer, found ${TokenType[this.parser.currToken.type]}`
+                    });
+                }
+                this.delimiter = this.parser.currToken;
+                this.parser.index++;
+            } else {
+                this.delimiter = this.parser.currToken;
+                this.parser.problems.push({
+                    start: this.delimiter.start,
+                    end: this.delimiter.end,
+                    message: `Expected ${this.text.toUpperCase()} argument, found: "${this.delimiter.text}"`
+                });
+            }
+        }
+        if (this.delimiter) {
+            this.end = this.delimiter.end;
+        }
+    };
 
     constructor(parser: Parser) {
-        const start = parser.index;
-        let end: number | undefined;
-        let text = parser.currText.match(/^(first|skip)/i)?.[0];
-        if (!text) {
-            throw new Error('first or skip token not present');
-        }
-        parser.index += text.length;
-        consumeCommentsAndWhitespace(parser);
-        let delimiter: string | undefined;
-        if (parser.currText.startsWith('(')) {
-            let index = 0;
-            let depth = 0;
-            for (const i of parser.currText) {
-                index++;
-                if (i === '(') {
-                    depth++;
-                } else if (i === ')') {
-                    depth--;
-                }
-                if (depth === 0) break;
-            }
-            if (depth !== 0) {
-                parser.problems.push({
-                    start: parser.index,
-                    end: parser.index + 1,
-                    message: 'Unclosed parenthesis'
-                });
-            }
-            delimiter = parser.currText.slice(0, index);
-            end = parser.index + index;
-        } else if (parser.currText.startsWith(':')) {
-            parser.index++;
-            const identifier = parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}(?=\\s|;)`))?.[0] ?? '';
-            if (!identifier) {
-                const token = parser.currText.match(/^\S*?/)?.[0] ?? '';
-                parser.problems.push({
-                    start: parser.index - 1,
-                    end: parser.index + token.length,
-                    message: `Invalid Parameter: :${token}`
-                });
-            }
-            delimiter = `:${identifier}`;
-            end = parser.index + delimiter.length;
-        } else {
-            let lit = literal(parser) 
-            if (lit) {
-                if (lit.type === ParserType.Integer && parseInt(lit.text) < 0) {
-                    parser.problems.push({
-                        start: lit.start,
-                        end: lit.end,
-                        message: "Argument can't be negative"
-                    });
-                } else if (lit.type !== ParserType.Integer) {
-                    parser.problems.push({
-                        start: lit.start,
-                        end: lit.end,
-                        message: `Argument literal must be an integer, found ${ParserType[lit.type]}`
-                    });
-                }
-                delimiter = lit.text;
-                end = parser.index + delimiter.length;
-            } else if (parser.currText.startsWith('?')) {
-                delimiter = '?';
-                end = parser.index + delimiter.length;
-            } else {
-                delimiter = parser.currText.match(/^[\w$]+|./)?.[0];
-                parser.problems.push({
-                    start: parser.index,
-                    end: parser.index + (delimiter?.length ?? 0),
-                    message: `Invalid Token: ${delimiter}`
-                });
-                if (delimiter == null) delimiter = '';
-                end = parser.index;
-            }
-        }
-        parser.index += delimiter.length;
-        if (end == null) {
-            throw new Error('End not defined');
-        }
-        super({start, end, text: parser.text.substring(start, end)});
-        this.delimiter = delimiter;
-    }
-}
-class SelectFirst extends FirstAndSkip {
-    // constructor(parser: Parser) {
-    //     super(parser);
-    // }
-}
-class SelectSkip extends FirstAndSkip {
-    constructor(parser: Parser) {
         super(parser);
+        this.text = this.parser.currToken.text;
+        parser.index++;
     }
 }
+class SelectFirst extends FirstAndSkip {}
+class SelectSkip extends FirstAndSkip {}
 
 class SelectStar extends BaseToken {
     constructor(parser: Parser) {
@@ -223,6 +186,7 @@ class SelectStar extends BaseToken {
 class JoinFrom extends BaseState {
 
     parent: FromSelect;
+    static validJoinTokens = new Set(['NATURAL', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL']);
     constructor(parser: Parser, parent: FromSelect) {
         super(parser);
         this.parent = parent;
@@ -236,7 +200,7 @@ class JoinFrom extends BaseState {
             if (match = /^(natural|inner|left|right|full)([^\w$]|$)/i.exec(this.parser.currText)?.[0]) {
                 this.type = match as JoinType;
                 this.parser.index += match.length;
-                consumeCommentsAndWhitespace(this.parser)
+                consumeCommentsAndWhitespace(this.parser);
                 if (!/^join([^\w$]|$)/i.test(this.parser.currText)) {
                     nextTokenError(this.parser, 'Expected "join" found _');
                 } else {
@@ -264,11 +228,12 @@ class FromSelect extends BaseState {
 
     source?: Table;
     parse() {
-        consumeCommentsAndWhitespace(this.parser);
-
-        if (/^(natural|join|inner|left|right|full)([^\w$]|$)/i.test(this.parser.currText)) {
+        if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
             this.parser.state.push(new JoinFrom(this.parser, this));
         } else if (this.joins.length || this.source) {
+            if (this.joins.length) {
+                this.end = this.joins[this.joins.length-1].end;
+            }
             this.end = this.parser.index;
             this.text = this.parser.text.substring(this.start, this.end);
             this.flush();

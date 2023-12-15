@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import {Parser} from './parser';
+import {Lexer} from './parser/lexer';
 
 if (process.argv.length < 3) {
   console.error('Usage: node program.js <filename>');
@@ -14,11 +15,18 @@ fs.readFile(fileName, 'utf8', async (err, data) => {
     process.exit(1);
   }
 
-  const parser = new Parser(data);
+  const lexer = new Lexer(data);
+
+  lexer.parse()
+
+  console.log(lexer.tokens)
+
+  const parser = new Parser(lexer);
 
   parser.parse()
 
-  console.log(parser.parsed)
+  console.log(parser);
+  console.log(parser.parsed);
   await new Promise(resolve => setTimeout(resolve, 500000));
 
 });

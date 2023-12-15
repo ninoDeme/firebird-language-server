@@ -1,35 +1,33 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser, statement} from '.';
-import {BaseState, State} from './base';
-import {REGULAR_IDENTIFIER} from './symbols';
+import {BaseState, ParenthesisBody, State} from './base';
+import {TokenType} from './symbols';
+import {LexedToken} from './lexer';
 
-export class Statement extends BaseState {
+export class Statement extends BaseState implements ParenthesisBody {
 
-    subQuery: boolean;
+    insideParenthesis: boolean;
 
     flush(state?: State) {
         this.parser.state.splice(this.parser.state.findIndex(el => el === state ?? this, 1))[0];
         this.parser.parsed.push(this);
-        if (this.parser.index < this.parser.text.length && this.parser.state.length === 0) {
+        if (this.parser.index < this.parser.tokens.length && this.parser.state.length === 0) {
             this.parser.state.push(statement(this.parser));
         }
     }
-    constructor(parser: Parser, start?: number, subQuery?: boolean) {
+    constructor(parser: Parser, start?: number, insideParenthesis?: boolean) {
         super(parser, start);
-        this.subQuery = !!subQuery;
+        this.insideParenthesis = !!insideParenthesis;
     }
 }
 
 
 export class EmptyStatement extends Statement {
     parse = () => {
-        this.parser.index++;
         this.end = this.parser.index;
         this.text = this.parser.text.substring(this.start, this.end);
+        this.parser.index++;
         this.flush();
-        if (this.parser.index < this.parser.text.length) {
-            this.parser.state.push(new Statement(this.parser));
-        }
     };
 
     constructor(parser: Parser, start?: number) {
@@ -39,17 +37,35 @@ export class EmptyStatement extends Statement {
 }
 
 export class UnknownStatement extends Statement {
+    tokens: LexedToken[] = [];
     parse() {
-        const token = this.parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}`))?.[0];
-        const fullStatement = this.parser.currText.match(new RegExp(`[\\s\\S]+?(;|$${this.subQuery ? '|\\)' : ''})`))?.[0] ?? this.parser.currText;
-        this.end = fullStatement.length;
+        let token = this.parser.currToken;
+        if (token.type === TokenType.RegularIdentifier || token.type === TokenType.ReservedWord) {
+            this.parser.problems.push({
+                start: token.start,
+                end: token.end,
+                severity: DiagnosticSeverity.Error,
+                message: `"${token.text}" is not a valid statement type`
+            });
+        } else {
+            this.parser.problems.push({
+                start: token.start,
+                end: token.end,
+                severity: DiagnosticSeverity.Error,
+                message: `Expected statement type, received "${token.text}"`
+            });
+        }
+        do {
+            this.tokens.push(token);
+            this.parser.index++;
+            token = this.parser.currToken;
+        } while (!(isEndOfStatement(token, this.insideParenthesis)))
+        this.end = token.end;
         this.text = this.parser.text.substring(this.start, this.end);
-        this.parser.problems.push({
-            start: this.start,
-            end: this.end,
-            severity: DiagnosticSeverity.Error,
-            message: `Unknown Statement Type: ${token}`
-        });
         this.flush();
     }
+}
+
+export function isEndOfStatement(token: LexedToken, subQuery?: boolean) {
+    return token.type === TokenType.EOF || token.type === TokenType.DotColon || (subQuery && token.type === TokenType.RParen)
 }

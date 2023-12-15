@@ -1,6 +1,6 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {REGULAR_IDENTIFIER, RESERVED_WORDS} from './symbols';
+import {REGULAR_IDENTIFIER, RESERVED_WORDS, TokenType} from './symbols';
 import {consumeCommentsAndWhitespace} from './utils';
 
 export class BaseState implements State, Token {
@@ -9,15 +9,15 @@ export class BaseState implements State, Token {
     parse() {
         throw new Error('not implemented');
     }
-    flush(state?: State) {
-        this.parser.state.splice(this.parser.state.findIndex(el => el === state ?? this, 1));
+    flush() {
+        this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
     }
     text!: string;
     start!: number;
     end!: number;
     constructor(parser: Parser, start?: number) {
         this.parser = parser;
-        this.start = start ?? parser.index;
+        this.start = start ?? parser.currToken.start;
     }
 }
 
@@ -102,6 +102,42 @@ export class BaseTable extends BaseState implements Table {
     }
 }
 
+export class BaseParenthesis implements State, Token {
+    text!: string;
+    start!: number;
+    end!: number;
+
+    parser: Parser;
+    parse: () => void = () => {
+        if (this.parser.currToken.type === TokenType.RParen) {
+            return this.flush();
+        }
+        if (this.parser.currToken.type === TokenType.EOF || this.parser.currToken.type === TokenType.DotColon) {
+            this.parser.problems.push({
+                start: this.start,
+                end: this.parser.currToken.end,
+                message: `Unterminated Parenthesis`
+            });
+            return this.flush();
+        }
+        this.body.parse()
+    };
+    flush: () => void = () => {
+        this.body.flush();
+        this.end = this.parser.currToken.end;
+        this.text = this.parser.text.substring(this.start, this.end);
+        this.parser.state.splice(this.parser.state.findIndex(el => el === this, 1));
+    };
+
+    body: ParenthesisBody;
+    constructor(token: Token, body: ParenthesisBody, parser: Parser) {
+        this.start = token.start;
+        this.parser = parser;
+        this.body = body;
+        this.body.insideParenthesis = true
+    }
+}
+
 export class BaseLiteral extends BaseToken implements Literal {
     static match(parser: Parser): unknown | undefined {
         throw new Error('Not Implemented');
@@ -124,6 +160,21 @@ export interface Token {
     text: string;
     start: number;
     end: number;
+}
+
+export interface ParenthesisBody extends State {
+    insideParenthesis: boolean;
+}
+
+export class EmptyParens implements ParenthesisBody {
+    insideParenthesis: boolean = true;
+    flush = () => this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
+    parse = () => this.flush();
+    parser: Parser;
+
+    constructor(parser: Parser) {
+        this.parser = parser;
+    }
 }
 
 export interface Problem {

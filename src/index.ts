@@ -4,6 +4,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Parser } from './parser';
 
 import * as inspector from 'node:inspector';
+import {Lexer} from './parser/lexer';
 
 // Creates the LSP connection
 const connection = createConnection(ProposedFeatures.all);
@@ -24,10 +25,13 @@ documents.onDidOpen((event) => {
 
 documents.onDidChangeContent((event) => {
     connection.console.log(`${new Date().toLocaleTimeString()} - Document changed ${event.document.uri}`);
-    const res = new Parser(event.document);
+    const lexer = new Lexer(event.document);
+
     try {
-        res.parse();      
-        console.log(res);
+        lexer.parse();      
+        const parser = new Parser(lexer);
+        parser.parse();
+        console.log(parser);
         // try {
         //     connection.console.log(util.inspect(_parsed));
         // } catch (e: any) {
@@ -35,7 +39,7 @@ documents.onDidChangeContent((event) => {
         // }
         connection.sendDiagnostics({
             uri: event.document.uri,
-            diagnostics: res.problems.map((prob => {
+            diagnostics: parser.problems.map((prob => {
                 const range = <Range>{start: event.document.positionAt(prob.start), end: event.document.positionAt(prob.end)};
                 return <Diagnostic>{
                     severity: prob.severity,

@@ -2,8 +2,9 @@ import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
 import {BaseState, BaseToken, Token} from './base';
 import {SelectStatement} from './select';
-import {REGULAR_IDENTIFIER} from './symbols';
+import {IDENTIFIER, REGULAR_IDENTIFIER, TokenType} from './symbols';
 import {consumeWhiteSpace, consumeCommentsAndWhitespace, nextTokenError} from './utils';
+import {isEndOfStatement} from './statement';
 
 export class ValueExpression extends BaseState {
 
@@ -17,48 +18,45 @@ export class ValueExpression extends BaseState {
                          | <CASE-construct>
                          | any other expression returning a single value of a Firebird data type or NULL
     */
-    parse() {
-        consumeWhiteSpace(this.parser);
-        consumeCommentsAndWhitespace(this.parser);
 
+    parse() {
         if (!this.start) this.start = this.parser.index;
 
-        const currText = this.parser.currText;
+        const currToken = this.parser.currToken;
 
-        if (currText.startsWith('(')) {
+        if (currToken.type === TokenType.LParen) {
             this.parser.index++;
             this.depth++;
-        } else if (currText.startsWith(')')) {
+            return this.tokens.push(currToken);
+        }
+
+        if (currToken.type === TokenType.RParen) {
             this.parser.index++;
             this.depth--;
-        } else if (this.depth) {
-            let nextParenthesis = currText.match(/[()]/);
-            if (nextParenthesis == null) {
-                this.parser.problems.push({
-                    start: this.parser.index,
-                    end: this.parser.text.length,
-                    message: 'Unclosed Parenthesis'
-                })
-            }
-            this.parser.index += nextParenthesis?.index ?? this.parser.currText.length;
-        } else if (/^(;|$|,|from(?=[^\w$]|$)|\))/i.test(currText)){
-            this.end = this.parser.index;
-            this.text = this.parser.text.substring(this.start, this.end);
-            this.flush();
-        } else {
-            const start = this.parser.index;
-            const res = currText.match(new RegExp(`^:?(${REGULAR_IDENTIFIER}|[^,;)\\S]+)`));
-            if (res?.[0]) {
-                this.parser.index += res?.[0].length;
-                this.tokens.push(new BaseToken({start, text: res?.[0], end: this.parser.index}));
-            } else {
-                this.parser.index++;
-            }
-
+            return this.tokens.push(currToken);
         }
+        if (this.depth) {
+            this.parser.index++;
+            if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon) {
+                let lastParens = [...this.tokens].reverse().find(item => item.text === '(');
+                this.parser.problems.push({
+                    start: lastParens?.start || this.start,
+                    end: currToken.end,
+                    message: 'Unclosed Parenthesis'
+                });
+                return this.flush();
+            }
+        }
+        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
+            this.end = this.tokens[this.tokens.length - 1].end;
+            this.text = this.parser.text.substring(this.start, this.end);
+            return this.flush();
+        }
+        this.parser.index++;
+        return this.tokens.push(currToken);
     }
 
-    private tokens: Token[] = [];
+    public tokens: Token[] = [];
     private depth: number = 0;
 }
 
@@ -67,23 +65,23 @@ export class OutputColumn extends BaseState {
 
     public expression?: ValueExpression | IdentifierStar;
     public parent: SelectStatement;
+    public alias?: Token;
+    public collation?: Token;
 
     /*
         <output_column> ::= <qualifier>.*
                           | <value_expression> [COLLATE collation] [[AS] alias]
      */
     parse() {
-        consumeWhiteSpace(this.parser);
-        consumeCommentsAndWhitespace(this.parser);
+        const currToken = this.parser.currToken;
+        let isComma = currToken.type === TokenType.Comma;
+        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || isComma) {
 
-        const isFrom = /^from([^\w$]|$)/i.test(this.parser.currText);
-        const isComma = this.parser.currText.startsWith(',');
-        if (isFrom || isComma || this.parser.index >= this.parser.currText.length) {
+            this.end = currToken.end;
+            this.text = this.parser.text.substring(this.start, this.end);
             if (isComma) {
                 this.parser.index++;
             }
-            this.end = this.parser.index;
-            this.text = this.parser.text.substring(this.start, this.end);
             if (!this.expression) {
                 this.parser.problems.push({
                     start: this.start,
@@ -96,7 +94,9 @@ export class OutputColumn extends BaseState {
             if (isComma) {
                 this.parent.addNewColumn();
             }
-        } else if (IdentifierStar.match.test(this.parser.currText)) {
+        } else if (this.expression) {
+            throw new Error('Unimplemented probably');
+        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokens[this.parser.index + 1].type === TokenType.Dot) {
             this.expression = new IdentifierStar(this.parser);
             this.parser.state.push(this.expression);
         } else {
@@ -107,29 +107,31 @@ export class OutputColumn extends BaseState {
 
     constructor(parser: Parser, parent: SelectStatement) {
         super(parser);
-        this.start = this.parser.index;
+        this.start = this.parser.currToken.start;
         this.parent = parent;
     }
 }
 
 export class IdentifierStar extends BaseState {
 
-    static match = new RegExp(`^${REGULAR_IDENTIFIER}\\.\\*(?=\\)|$|,|;|\\s)`);
-
+    identifier!: Token;
+    dot!: Token;
+    asterisk!: Token;
     parse() {
-        let text = this.parser.currText.match(IdentifierStar.match)?.[0];
-        if (text == null) {
-            throw new Error('Could not get identifier');
-        }
-        this.start = this.parser.index;
-        this.parser.index += text.length;
-        this.end = this.parser.index;
-        this.text = text;
+        this.identifier = this.parser.currToken;
+        this.parser.index++;
+        this.start = this.identifier.start;
+        this.dot = this.parser.currToken;
 
-        consumeWhiteSpace(this.parser);
-        consumeCommentsAndWhitespace(this.parser);
-        if (!/^(from(?=[^\w$]|$)|,|\)|$|;)/.test(this.parser.currText)) {
-            nextTokenError(this.parser, `Unknown Token`);
+        this.parser.index++;
+        let next = this.parser.currToken;
+        if (next.type === TokenType.Asterisk) {
+            this.asterisk = next;
+            this.end = next.end;
+            this.text = this.parser.currText.substring(this.start, this.end);
+            this.parser.index++;
+        } else {
+            nextTokenError(this.parser, `Expected asterisk found ${next.text}`);
         }
         this.flush();
     }

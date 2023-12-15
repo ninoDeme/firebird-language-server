@@ -1,6 +1,11 @@
 export const REGULAR_IDENTIFIER = '([A-z][\\w$]*)';
 export const NON_REGULAR_IDENTIFIER = '"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))';
 
+export const REGULAR_IDENTIFIER_REGEX = /^([A-z][\w$]*)/;
+export const NON_REGULAR_IDENTIFIER_REGEX = /^"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))/;
+
+export const VARIABLE_REGEX = new RegExp(`^:${REGULAR_IDENTIFIER}|${NON_REGULAR_IDENTIFIER}`);
+
 export const SPECIAL_CHARACTERS = new Set([
     '"',
     '%',
@@ -27,17 +32,8 @@ export const SPECIAL_CHARACTERS = new Set([
     '}'
 ]);
 
-export const SPECIAL_CHARACTERS_REGEX = `["%&'()*+,\\-./:;<=>?\\[\\]^{}]`;
-export const SPECIAL_CHARACTERS_REGEX2 = `("|%|&|'|\\(|\\)|\\*|\\+|,|-|\\.|\\/|:|;|<|=|>|\\?|\\[|\\]|\\^|{|})`;
-
-export const PREDICATES = [
-    '=',
-    '>',
-    '<',
-    '>=',
-    '<=',
-    '<>',
-];
+export const SPECIAL_CHARACTERS_REGEX = /^[\\"%&'()*+,\-.\/:;<=>?\[\]\^{}]/;
+export const SPECIAL_CHARACTERS_REGEX2 = `^[\\\\"%&'()*+,\\-.\\/:;<=>?\\[\\]\\^{}]`;
 
 export const ARITHMETIC_OPERATORS = [
     '+',
@@ -52,13 +48,10 @@ export const OTHER_OPERATORS = [
 
 export const COMPARISON_OPERATORS = [
     // 'IS',
-    '=',
     '<>',
     '!=',
     '~=',
     '^=',
-    '>',
-    '<',
     '>=',
     '<=',
     '!>',
@@ -67,7 +60,13 @@ export const COMPARISON_OPERATORS = [
     '!<',
     '~<',
     '^<',
+    '>',
+    '<',
+    '=',
 ];
+
+export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...OTHER_OPERATORS].sort((a, b) => b.length - a.length));
+export const OPERATORS_REGEX = /^(<[>=]?|>=?|[!~^][<>=]|\|\||[-+*\/=])/;
 
 export const RESERVED_WORDS = new Set([
     'ADD',
@@ -800,3 +799,36 @@ const KEYWORDS = new Set([
     'YEARDAY',
     'ZONE',
 ]);
+
+
+
+
+
+
+
+
+export enum TokenType {
+    RegularIdentifier,
+    ReservedWord,
+    WhiteSpace,
+    Comment,
+    EOF,
+    Variable,
+    NonRegularIdentifier,
+    Operator,
+    Introducer,
+    String,
+    Integer,
+    FixedPoint,
+    FloatingPoint,
+    SpecialCharacter,
+    RParen,
+    LParen,
+    DotColon,
+    Asterisk,
+    Comma,
+    Dot
+}
+
+export const IDENTIFIER = new Set([TokenType.RegularIdentifier, TokenType.NonRegularIdentifier])
+export const LITERAL = new Set([TokenType.Integer, TokenType.FloatingPoint, TokenType.FixedPoint, TokenType.String])
