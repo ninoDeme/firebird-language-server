@@ -25,9 +25,9 @@ fs.readFile(fileName, 'utf8', async (err, data) => {
 
   // }
   // console.timeEnd('a');
-  // console.log(lexer.tokens)
-  // console.log(parser);
-  // console.log(parser.parsed);
-  // await new Promise(resolve => setTimeout(resolve, 500000));
+  console.log(lexer.tokens)
+  console.log(parser);
+  console.log(parser.parsed);
+  await new Promise(resolve => setTimeout(resolve, 500000));
 
 });

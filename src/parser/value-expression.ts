@@ -44,8 +44,9 @@ export class ValueExpression extends BaseState {
                     end: currToken.end,
                     message: 'Unclosed Parenthesis'
                 });
-                return this.flush();
+                this.flush();
             }
+            return;
         }
         if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
             this.end = this.tokens[this.tokens.length - 1].end;
@@ -95,8 +96,8 @@ export class OutputColumn extends BaseState {
                 this.parent.addNewColumn();
             }
         } else if (this.expression) {
-            throw new Error('Unimplemented probably');
-        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokens[this.parser.index + 1].type === TokenType.Dot) {
+            throw new Error('Unimplemented probably ');
+        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokenOffset(1).type === TokenType.Dot && this.parser.tokenOffset(2).type === TokenType.Asterisk) {
             this.expression = new IdentifierStar(this.parser);
             this.parser.state.push(this.expression);
         } else {

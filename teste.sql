@@ -1,11 +1,11 @@
-SELECT first 1 asdasd qwjdnqwd qqwjdn, asdasd.*, asdqwdqpouwdn from CAD_BILHETES AS GAMING
-    -- customers.customer_id,:wa
+SELECT first 1
+    customers.customer_id,
 
-    -- customers.customer_name,
-    -- COUNT(orders.order_id) AS total_orders,
-    -- SUM(order_details.quantity * products.price) AS total_spent
--- FROM
---     customers
+    customers.customer_name,
+    COUNT(orders.order_id) AS total_orders,
+    SUM(order_details.quantity * products.price) AS total_spent
+FROM
+    customers
 -- JOIN orders ON customers.customer_id = orders.customer_id
 -- JOIN
 --     order_details ON orders.order_id = order_details.order_id
