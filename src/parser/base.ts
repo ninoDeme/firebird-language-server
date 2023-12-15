@@ -1,7 +1,6 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {REGULAR_IDENTIFIER, RESERVED_WORDS, TokenType} from './symbols';
-import {consumeCommentsAndWhitespace} from './utils';
+import {IDENTIFIER, TokenType} from './symbols';
 
 export class BaseState implements State, Token {
     parser: Parser;
@@ -37,7 +36,7 @@ export class BaseToken implements Token {
             this.text = token;
             if (parser) {
                 this.start = parser.index;
-                parser.index += token.length;
+                parser.index++;
                 this.end = parser.index;
             } else {
                 this.start = 0;
@@ -48,17 +47,14 @@ export class BaseToken implements Token {
 }
 
 export class BaseTable extends BaseState implements Table {
-    name?: string;
-    alias?: string;
+    name?: Token;
+    alias?: Token;
 
     parse() {
-        const token = this.parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}`))?.[0];
-        if (token == null) {
-            throw new Error('Could not get identifier');
-        }
-        this.start = this.parser.index;
+        const token = this.parser.currToken;
+        this.start = token.start;
         this.name = token;
-        this.parser.index += token.length;
+        this.parser.index++;
 
         this.parseAlias();
 
@@ -67,38 +63,34 @@ export class BaseTable extends BaseState implements Table {
 
     parseAlias() {
 
-        consumeCommentsAndWhitespace(this.parser);
-
         let hasAS = false;
-        if (this.parser.currText.match(/^as([^\w$]|$)/i)) {
-            this.parser.index += 2;
-            consumeCommentsAndWhitespace(this.parser);
+        if (this.parser.currToken.text === 'AS') {
+            this.parser.index++;
             hasAS = true;
         }
 
-        const token = this.parser.currText.match(new RegExp(`^${REGULAR_IDENTIFIER}`))?.[0];
+        const token = this.parser.currToken;
 
-        if (token && !RESERVED_WORDS.has(token.toUpperCase())) {
+        if (IDENTIFIER.has(token.type)) {
             this.alias = token;
-        } else {
-            if (hasAS) {
-                if (token) {
-                    this.parser.problems.push({
-                        start: this.parser.index,
-                        end: this.parser.index + token.length,
-                        message: `Invalid alias, ${token} is a reserved keyword`
-                    });
-                    this.alias = token;
-                } else {
-                    this.parser.problems.push({
-                        start: this.parser.index,
-                        end: this.parser.index,
-                        message: `Missing or invalid Alias`
-                    });
-                }
+            this.parser.index++;
+        } else if (hasAS) {
+            if (token.type === TokenType.ReservedWord) {
+                this.parser.problems.push({
+                    start: token.start,
+                    end: token.end,
+                    message: `Invalid alias, ${token} is a reserved keyword`
+                });
+                this.alias = token;
+                this.parser.index++;
+            } else {
+                this.parser.problems.push({
+                    start: this.parser.index,
+                    end: this.parser.index,
+                    message: `Missing or invalid Alias`
+                });
             }
         }
-        this.parser.index += (this.alias ?? '').length;
     }
 }
 
@@ -120,7 +112,7 @@ export class BaseParenthesis implements State, Token {
             });
             return this.flush();
         }
-        this.body.parse()
+        this.body.parse();
     };
     flush: () => void = () => {
         this.body.flush();
@@ -134,7 +126,7 @@ export class BaseParenthesis implements State, Token {
         this.start = token.start;
         this.parser = parser;
         this.body = body;
-        this.body.insideParenthesis = true
+        this.body.insideParenthesis = true;
     }
 }
 
@@ -146,8 +138,8 @@ export class BaseLiteral extends BaseToken implements Literal {
 }
 
 export interface Table {
-    name?: string;
-    alias?: string;
+    name?: Token;
+    alias?: Token;
 }
 
 export interface State {

@@ -1,9 +1,9 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {BaseState, BaseToken, Token} from './base';
+import {BaseState, Token} from './base';
 import {SelectStatement} from './select';
-import {IDENTIFIER, REGULAR_IDENTIFIER, TokenType} from './symbols';
-import {consumeWhiteSpace, consumeCommentsAndWhitespace, nextTokenError} from './utils';
+import {IDENTIFIER, TokenType} from './symbols';
+import {nextTokenError} from './utils';
 import {isEndOfStatement} from './statement';
 
 export class ValueExpression extends BaseState {
@@ -77,11 +77,11 @@ export class OutputColumn extends BaseState {
         let isComma = currToken.type === TokenType.Comma;
         if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || isComma) {
 
-            this.end = currToken.end;
-            this.text = this.parser.text.substring(this.start, this.end);
             if (isComma) {
                 this.parser.index++;
             }
+            this.end = this.parser.tokenOffset(-1).end;
+            this.text = this.parser.text.substring(this.start, this.end);
             if (!this.expression) {
                 this.parser.problems.push({
                     start: this.start,
