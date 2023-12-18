@@ -4,7 +4,7 @@ export const NON_REGULAR_IDENTIFIER = '"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))';
 export const REGULAR_IDENTIFIER_REGEX = /^([A-z][\w$]*)/;
 export const NON_REGULAR_IDENTIFIER_REGEX = /^"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))/;
 
-export const VARIABLE_REGEX = new RegExp(`^:${REGULAR_IDENTIFIER}|${NON_REGULAR_IDENTIFIER}`);
+export const VARIABLE_REGEX = new RegExp(`^:(${REGULAR_IDENTIFIER}|${NON_REGULAR_IDENTIFIER})`);
 
 export const SPECIAL_CHARACTERS = new Set([
     '"',

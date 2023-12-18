@@ -208,6 +208,7 @@ class JoinFrom extends BaseState {
                 this.parser.index++;
             }
         } else {
+            // TODO: end join
         }
     }
 

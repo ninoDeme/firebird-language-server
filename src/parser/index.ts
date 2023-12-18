@@ -58,6 +58,10 @@ export class Parser {
         return this.parsed;
     }
 
+    next() {
+        this.state[this.state.length - 1].parse();
+    }
+
     clone() {
         return new Parser(this.lexer, this.index)
     }

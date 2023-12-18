@@ -1,12 +1,10 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {BaseState, Token} from './base';
+import {BaseParenthesis, BaseState, ParenthesisBody, State, Token} from './base';
 import {SelectStatement} from './select';
-import {IDENTIFIER, TokenType} from './symbols';
+import {IDENTIFIER, LITERAL, TokenType} from './symbols';
 import {nextTokenError} from './utils';
 import {isEndOfStatement} from './statement';
-
-export class ValueExpression extends BaseState {
 
     /*
     <value_expression> ::= [<qualifier>.]col_name
@@ -18,47 +16,56 @@ export class ValueExpression extends BaseState {
                          | <CASE-construct>
                          | any other expression returning a single value of a Firebird data type or NULL
     */
-
+export interface ValueExpressionElement extends State {}
+export class ValueExpression extends BaseState implements ParenthesisBody {
+    insideParenthesis: boolean = false;
+    elements: Token[] = [];
     parse() {
-        if (!this.start) this.start = this.parser.index;
-
-        const currToken = this.parser.currToken;
-
+        let currToken = this.parser.currToken;
         if (currToken.type === TokenType.LParen) {
-            this.parser.index++;
-            this.depth++;
-            return this.tokens.push(currToken);
+            this.parser.index += 1;
+            let innerExpression = new ValueExpression(this.parser)
+            let parens = new BaseParenthesis(currToken, innerExpression, this.parser);
+            this.elements.push(parens)
+            this.parser.state.push(parens)
+            this.parser.state.push(innerExpression);
+            return;
         }
-
         if (currToken.type === TokenType.RParen) {
-            this.parser.index++;
-            this.depth--;
-            return this.tokens.push(currToken);
+            this.parser.index += 1;
+            return this.flush();
         }
-        if (this.depth) {
-            this.parser.index++;
-            if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon) {
-                let lastParens = [...this.tokens].reverse().find(item => item.text === '(');
-                this.parser.problems.push({
-                    start: lastParens?.start || this.start,
-                    end: currToken.end,
-                    message: 'Unclosed Parenthesis'
-                });
-                this.flush();
+        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
+            return this.flush();
+        }
+        if (IDENTIFIER.has(currToken.type) || currToken.type === TokenType.ReservedWord) {
+            this.parser.index += 1;
+            let nextToken = this.parser.currToken;
+            if (nextToken.type === TokenType.LParen) {
+                // TODO: Function
+            } else if (nextToken.type === TokenType.Dot) {
+                // TODO: [<qualifier>.]col_name
+            } else if (['DATE', 'TIMESTAMP', 'TIME'].includes(currToken.text.toUpperCase())) {
+                // TODO: Date Literal
+            } else {
+                this.elements.push(currToken);
             }
             return;
         }
-        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
-            this.end = this.tokens[this.tokens.length - 1].end;
-            this.text = this.parser.text.substring(this.start, this.end);
-            return this.flush();
+        if (currToken.type === TokenType.Variable) {
+            this.elements.push(currToken)
         }
-        this.parser.index++;
-        return this.tokens.push(currToken);
+        if (LITERAL.has(currToken.type)) {
+            // TODO: Literal
+            this.elements.push(currToken);
+        }
     }
+}
 
-    public tokens: Token[] = [];
-    private depth: number = 0;
+export class Operator extends BaseState {
+    left?: Token;
+    right?: Token;
+    precedence: number = 99; // precedence = <type-precedence><operator-precedence>
 }
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select-column-list

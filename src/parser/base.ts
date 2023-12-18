@@ -1,6 +1,7 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
 import {IDENTIFIER, TokenType} from './symbols';
+import {ValueExpression, ValueExpressionElement} from './value-expression';
 
 export class BaseState implements State, Token {
     parser: Parser;
@@ -94,13 +95,13 @@ export class BaseTable extends BaseState implements Table {
     }
 }
 
-export class BaseParenthesis implements State, Token {
+export class BaseParenthesis implements State, Token, ValueExpressionElement {
     text!: string;
     start!: number;
     end!: number;
 
     parser: Parser;
-    parse: () => void = () => {
+    parse() {
         if (this.parser.currToken.type === TokenType.RParen) {
             return this.flush();
         }
@@ -134,7 +135,7 @@ export class BaseLiteral extends BaseToken implements Literal {
     static match(parser: Parser): unknown | undefined {
         throw new Error('Not Implemented');
     };
-    type = ParserType.Never;
+    type = LiteralType.Never;
 }
 
 export interface Table {
@@ -177,10 +178,10 @@ export interface Problem {
 }
 
 export interface Literal extends Token {
-    readonly type: ParserType;
+    readonly type: LiteralType;
 }
 
-export enum ParserType {
+export enum LiteralType {
     Integer,       // 0, -34, 45, 0X080000000;
     FixedPoint,    // 0.0, -3.14
     FloatingPoint, // 3.23e-23;
