@@ -47,7 +47,7 @@ export const OTHER_OPERATORS = [
 ];
 
 export const COMPARISON_OPERATORS = [
-    // 'IS',
+    'IS',
     '<>',
     '!=',
     '~=',
@@ -63,6 +63,12 @@ export const COMPARISON_OPERATORS = [
     '>',
     '<',
     '=',
+];
+
+export const LOGICAL_OPERATORS = [
+    'NOT',
+    'AND',
+    'OR'
 ];
 
 export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...OTHER_OPERATORS].sort((a, b) => b.length - a.length));
@@ -289,7 +295,7 @@ export const RESERVED_WORDS = new Set([
     'YEAR',
 ]);
 
-const KEYWORDS = new Set([
+export const KEYWORDS = new Set([
     '!<',
     '^<',
     '^=',
@@ -802,7 +808,6 @@ const KEYWORDS = new Set([
 
 export enum TokenType {
     RegularIdentifier,
-    ReservedWord,
     WhiteSpace,
     Comment,
     EOF,

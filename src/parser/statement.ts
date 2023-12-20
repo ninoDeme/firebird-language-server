@@ -1,8 +1,9 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser, statement} from '.';
-import {BaseState, ParenthesisBody, State} from './base';
+import {BaseState, State} from './base';
 import {TokenType} from './symbols';
 import {LexedToken} from './lexer';
+import {ParenthesisBody} from './paren';
 
 export class Statement extends BaseState implements ParenthesisBody {
 
@@ -40,7 +41,7 @@ export class UnknownStatement extends Statement {
     tokens: LexedToken[] = [];
     parse() {
         let token = this.parser.currToken;
-        if (token.type === TokenType.RegularIdentifier || token.type === TokenType.ReservedWord) {
+        if (token.type === TokenType.RegularIdentifier) {
             this.parser.problems.push({
                 start: token.start,
                 end: token.end,

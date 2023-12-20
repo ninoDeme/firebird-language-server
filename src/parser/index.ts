@@ -69,7 +69,7 @@ export class Parser {
 
 export function statement(parser: Parser, start: number = parser.index, subQuery?: boolean): Statement {
     const currToken = parser.currToken;
-    if (currToken.type === TokenType.ReservedWord && currToken.text.toUpperCase() === 'SELECT') {
+    if (currToken.type === TokenType.RegularIdentifier && currToken.text.toUpperCase() === 'SELECT') {
         return new SelectStatement(parser, start);
     }
     else if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon || subQuery && currToken.type === TokenType.RParen) {

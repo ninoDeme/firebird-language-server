@@ -1,7 +1,7 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {IDENTIFIER, TokenType} from './symbols';
-import {ValueExpression, ValueExpressionElement} from './value-expression';
+import {IDENTIFIER} from './symbols';
+import {LexedRegularIdentifier} from './lexer';
 
 export class BaseState implements State, Token {
     parser: Parser;
@@ -65,22 +65,30 @@ export class BaseTable extends BaseState implements Table {
     parseAlias() {
 
         let hasAS = false;
-        if (this.parser.currToken.text === 'AS') {
+        if (this.parser.currToken.text.toUpperCase() === 'AS') {
             this.parser.index++;
             hasAS = true;
         }
 
         const token = this.parser.currToken;
 
-        if (IDENTIFIER.has(token.type)) {
-            this.alias = token;
-            this.parser.index++;
-        } else if (hasAS) {
-            if (token.type === TokenType.ReservedWord) {
+        if (IDENTIFIER.has(token.type) && !(token as LexedRegularIdentifier).isReserved) {
+            if ((token as LexedRegularIdentifier).isKeyword) {
                 this.parser.problems.push({
                     start: token.start,
                     end: token.end,
-                    message: `Invalid alias, ${token} is a reserved keyword`
+                    message: `'${token.text}' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`,
+                    severity: DiagnosticSeverity.Warning
+                });
+            }
+            this.alias = token;
+            this.parser.index++;
+        } else if (hasAS) {
+            if ((token as LexedRegularIdentifier).isReserved) {
+                this.parser.problems.push({
+                    start: token.start,
+                    end: token.end,
+                    message: `Invalid alias, '${token}' is a reserved keyword`
                 });
                 this.alias = token;
                 this.parser.index++;
@@ -93,49 +101,6 @@ export class BaseTable extends BaseState implements Table {
             }
         }
     }
-}
-
-export class BaseParenthesis implements State, Token, ValueExpressionElement {
-    text!: string;
-    start!: number;
-    end!: number;
-
-    parser: Parser;
-    parse() {
-        if (this.parser.currToken.type === TokenType.RParen) {
-            return this.flush();
-        }
-        if (this.parser.currToken.type === TokenType.EOF || this.parser.currToken.type === TokenType.DotColon) {
-            this.parser.problems.push({
-                start: this.start,
-                end: this.parser.currToken.end,
-                message: `Unterminated Parenthesis`
-            });
-            return this.flush();
-        }
-        this.body.parse();
-    };
-    flush: () => void = () => {
-        this.body.flush();
-        this.end = this.parser.currToken.end;
-        this.text = this.parser.text.substring(this.start, this.end);
-        this.parser.state.splice(this.parser.state.findIndex(el => el === this, 1));
-    };
-
-    body: ParenthesisBody;
-    constructor(token: Token, body: ParenthesisBody, parser: Parser) {
-        this.start = token.start;
-        this.parser = parser;
-        this.body = body;
-        this.body.insideParenthesis = true;
-    }
-}
-
-export class BaseLiteral extends BaseToken implements Literal {
-    static match(parser: Parser): unknown | undefined {
-        throw new Error('Not Implemented');
-    };
-    type = LiteralType.Never;
 }
 
 export interface Table {
@@ -155,20 +120,11 @@ export interface Token {
     end: number;
 }
 
-export interface ParenthesisBody extends State {
-    insideParenthesis: boolean;
+
+export interface FunctionBody extends State {
+    insideFunction: boolean;
 }
 
-export class EmptyParens implements ParenthesisBody {
-    insideParenthesis: boolean = true;
-    flush = () => this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
-    parse = () => this.flush();
-    parser: Parser;
-
-    constructor(parser: Parser) {
-        this.parser = parser;
-    }
-}
 
 export interface Problem {
     start: number;

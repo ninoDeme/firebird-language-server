@@ -1,11 +1,9 @@
 import {Parser} from '.';
-import {BaseLiteral} from './base';
+import {BaseToken} from './base';
 import {LexedToken} from './lexer';
 import {TokenType} from './symbols';
 
-class ParserString extends BaseLiteral {
-
-    // type: LiteralType.String | LiteralType.HexString;
+export class ParserString extends BaseToken {
 
     contents?: string;
 
@@ -19,11 +17,11 @@ class ParserString extends BaseLiteral {
     }
 }
 
-class BaseTimeDate extends BaseLiteral {
+export class BaseTimeDate extends BaseToken {
 
     dateString: ParserString | undefined;
 
-    constructor(text: string, parser: Parser) {
+    constructor(parser: Parser) {
         const start = parser.currToken.start;
         parser.index++;
         let str;

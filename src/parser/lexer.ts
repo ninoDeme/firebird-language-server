@@ -1,6 +1,6 @@
 import {TextDocument} from 'vscode-languageserver-textdocument';
 import {State, BaseState, Problem, Token} from './base';
-import {NON_REGULAR_IDENTIFIER_REGEX, OPERATORS_REGEX, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, TokenType, VARIABLE_REGEX} from './symbols';
+import {KEYWORDS, NON_REGULAR_IDENTIFIER_REGEX, OPERATORS_REGEX, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, TokenType, VARIABLE_REGEX} from './symbols';
 
 export class Lexer {
 
@@ -81,10 +81,14 @@ export class Lexer {
         }
 
         if (token = currText.match(REGULAR_IDENTIFIER_REGEX)?.[0]) {
-            if (RESERVED_WORDS.has(token.toUpperCase())) {
-                return this.token(token, TokenType.ReservedWord);
+            let newToken = this.token(token, TokenType.RegularIdentifier) as LexedRegularIdentifier;
+            if (KEYWORDS.has(token.toUpperCase())) {
+                newToken.isKeyword = true;
+                if (RESERVED_WORDS.has(token.toUpperCase())) {
+                    newToken.isReserved = true;
+                }
             }
-            return this.token(token, TokenType.RegularIdentifier);
+            return newToken
         }
 
         if (currText.startsWith('.')) {
@@ -214,6 +218,12 @@ function matchString(currText: string, lexer: Lexer): LexedString | null {
 export interface LexedToken extends Token {
     type: TokenType;
     typeText?: keyof typeof TokenType;
+}
+
+export interface LexedRegularIdentifier extends LexedToken {
+    type: TokenType.RegularIdentifier;
+    isKeyword?: boolean;
+    isReserved?: boolean;
 }
 
 export interface LexedString extends LexedToken {

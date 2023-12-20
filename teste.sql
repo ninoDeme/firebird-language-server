@@ -2,8 +2,8 @@ SELECT first 1
     customers.customer_id,
 
     customers.customer_name,
-    COUNT(orders.order_id) AS total_orders,
-    SUM(order_details.quantity * products.price) AS total_spent
+    COUNT(orders.order_id) AS total_orders
+   --  SUM(order_details.quantity * products.price) AS total_spent
 FROM
     customers
 -- JOIN orders ON customers.customer_id = orders.customer_id

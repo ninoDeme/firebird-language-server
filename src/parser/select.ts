@@ -1,12 +1,13 @@
 import {type Parser} from '.';
-import {BaseParenthesis, BaseState, BaseTable, BaseToken, EmptyParens, JoinType, ParenthesisBody, State, Table, Token} from './base';
+import {BaseState, BaseTable, BaseToken, JoinType, State, Table, Token} from './base';
+import {ExpressionParenthesis, ParenthesisBody} from './paren';
 import {Statement} from './statement';
 import {IDENTIFIER, LITERAL, TokenType} from './symbols';
 import {nextTokenError} from './utils';
 import {OutputColumn} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
-export class SelectStatement extends Statement {
+export class SelectStatement extends Statement implements ParenthesisBody {
 
     parse = () => {
         const currToken = this.parser.currToken;
@@ -119,17 +120,8 @@ class FirstAndSkip extends BaseState {
         if (this.parser.currToken.type === TokenType.LParen) {
             let token = this.parser.currToken;
             this.parser.index++;
-            let body: ParenthesisBody;
-
-            if (this.parser.currToken.text.toUpperCase() === 'SELECT') {
-                body = new SelectStatement(this.parser);
-            } else {
-                body = new EmptyParens(this.parser);
-            }
-
-            let parens = new BaseParenthesis(token, body, this.parser);
+            let parens = new ExpressionParenthesis(token, this.parser);
             this.parser.state.push(parens);
-            this.parser.state.push(body);
             this.delimiter = parens;
 
         } else if (this.parser.currToken.type === TokenType.Variable) {
@@ -275,7 +267,7 @@ export class UnknownTable extends BaseTable {
 }
 
 export class DerivedTable extends BaseTable implements State {
-    paren?: BaseParenthesis;
+    paren?: ExpressionParenthesis;
 
     parse() {
         if (this.paren) {
@@ -288,9 +280,8 @@ export class DerivedTable extends BaseTable implements State {
                 nextTokenError(this.parser, `Unknown Token`);
             }
         } else {
-            this.paren = new BaseParenthesis(this.parser.currToken, new SelectStatement(this.parser), this.parser)
+            this.paren = new ExpressionParenthesis(this.parser.currToken, this.parser)
             this.parser.state.push(this.paren);
-            this.parser.state.push(this.paren.body);
         }
     }
 }
