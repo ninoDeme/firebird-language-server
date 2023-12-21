@@ -3,7 +3,9 @@ import {BaseToken} from './base';
 import {LexedToken} from './lexer';
 import {TokenType} from './symbols';
 
-export class ParserString extends BaseToken {
+export class Literal extends BaseToken {}
+
+export class ParserString extends Literal {
 
     contents?: string;
 
@@ -17,7 +19,7 @@ export class ParserString extends BaseToken {
     }
 }
 
-export class BaseTimeDate extends BaseToken {
+export class ParserTimeDate extends Literal {
 
     dateString: ParserString | undefined;
 

@@ -133,10 +133,6 @@ export interface Problem {
     severity?: DiagnosticSeverity;
 }
 
-export interface Literal extends Token {
-    readonly type: LiteralType;
-}
-
 export enum LiteralType {
     Integer,       // 0, -34, 45, 0X080000000;
     FixedPoint,    // 0.0, -3.14
@@ -147,7 +143,7 @@ export enum LiteralType {
     Time,          // TIME '15:12:56';
     Timestamp,     // TIMESTAMP '2018-01-19 13:32:02';
     Boolean,       // true, false, unknown
-    NullState,     // null
+    Null,     // null
     Never
 }
 

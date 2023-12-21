@@ -23,7 +23,6 @@ export abstract class BaseParenthesis implements Paren {
     insideParenthesis?: boolean;
     parse() {
         if (this.parser.currToken.type === TokenType.RParen) {
-            this.parser.index++;
             return this.flush();
         }
         if (this.parser.currToken.type === TokenType.EOF || this.parser.currToken.type === TokenType.DotColon) {
@@ -32,6 +31,7 @@ export abstract class BaseParenthesis implements Paren {
                 end: this.parser.currToken.end,
                 message: `Unterminated Parenthesis`
             });
+            this.parser.index--;
             return this.flush();
         }
         this.parseBody();
@@ -43,14 +43,13 @@ export abstract class BaseParenthesis implements Paren {
         this.end = this.parser.currToken.end;
         this.text = this.parser.text.substring(this.start, this.end);
         this.parser.state.splice(this.parser.state.findIndex(el => el === this, 1));
+        this.parser.index++;
     };
 
     body?: ParenthesisBody[];
     constructor(token: Token, parser: Parser) {
         this.start = token.start;
         this.parser = parser;
-        // this.body = body;
-        // this.body.insideParenthesis = true;
     }
 }
 

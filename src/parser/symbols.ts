@@ -1,3 +1,6 @@
+import {Parser} from '.';
+import {Token} from './base';
+
 export const REGULAR_IDENTIFIER = '([A-z][\\w$]*)';
 export const NON_REGULAR_IDENTIFIER = '"((?:[^"]|"")*(?:[^ "]|""))? *(?:"|($))';
 
@@ -42,7 +45,7 @@ export const ARITHMETIC_OPERATORS = [
     '*'
 ];
 
-export const OTHER_OPERATORS = [
+export const CONCATENATION_OPERATORS = [
     '||'
 ];
 
@@ -71,8 +74,156 @@ export const LOGICAL_OPERATORS = [
     'OR'
 ];
 
-export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...OTHER_OPERATORS].sort((a, b) => b.length - a.length));
+export const OPERATORS_PRECEDENCES: Record<string, number> = {
+    '||': 11,
+    '+': 23,
+    '-': 23,
+    '/': 22,
+    '*': 22,
+    'IS': 31,
+    '<>': 32,
+    '!=': 32,
+    '~=': 32,
+    '^=': 32,
+    '>=': 32,
+    '<=': 32,
+    '!>': 32,
+    '~>': 32,
+    '^>': 32,
+    '!<': 32,
+    '~<': 32,
+    '^<': 32,
+    '>': 32,
+    '<': 32,
+    '=': 32,
+    'BETWEEN': 32,
+    'LIKE': 32,
+    'CONTAINING': 32,
+    'SIMILAR': 32,
+    'STARTING': 32,
+    'NOT': 41,
+    'AND': 42,
+    'OR': 43
+};
+
+export const UNARY = new Set([
+    '+',
+    '-',
+    // 'IS'
+])
+
+export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...CONCATENATION_OPERATORS].sort((a, b) => b.length - a.length));
 export const OPERATORS_REGEX = /^(<[>=]?|>=?|[!~^][<>=]|\|\||[-+*\/=])/;
+
+export enum TokenType {
+    RegularIdentifier,
+    WhiteSpace,
+    Comment,
+    EOF,
+    Variable,
+    NonRegularIdentifier,
+    Operator,
+    Introducer,
+    String,
+    Integer,
+    FixedPoint,
+    FloatingPoint,
+    SpecialCharacter,
+    RParen,
+    LParen,
+    DotColon,
+    Asterisk,
+    Comma,
+    Dot
+}
+
+export const IDENTIFIER = new Set([TokenType.RegularIdentifier, TokenType.NonRegularIdentifier])
+export const LITERAL = new Set([TokenType.Integer, TokenType.FloatingPoint, TokenType.FixedPoint, TokenType.String])
+
+export const COMPARISON_PREDICATES_1 = new Set(['LIKE', 'CONTAINING', 'BETWEEN'])
+
+// STARTING WITH,
+// SIMILAR TO,
+// IS [NOT] NULL,
+// IS [NOT] {TRUE | FALSE | UNKNOWN},
+// IS [NOT] DISTINCT FROM
+
+export function getOperator(parser: Parser): {token: Token, precedence: number} | undefined {
+ 
+    let firstWord = parser.currToken.text.toUpperCase();
+    let start = parser.currToken.start;
+    let token: Token | undefined = undefined
+
+    if (firstWord === 'IS') {
+        parser.index++;
+        if (parser.currToken.text.toUpperCase() === 'NOT') {
+            parser.index++;
+        }
+        if (parser.currToken.text.toUpperCase() === 'DISTINCT') {
+            parser.index++;
+            if (parser.currToken.text.toUpperCase() !== 'FROM') {
+                parser.problems.push({
+                    start: parser.currToken.start,
+                    end: parser.currToken.end,
+                    message: `Expected 'FROM' in 'IS [NOT] DISTINCT FROM' predicate, found: ${parser.currToken.text}`
+                })
+                parser.index--;
+            }       
+        }
+        token = {
+            start,
+            end: parser.currToken.end,
+            text: parser.text.substring(start, parser.currToken.end)
+        };
+        parser.index++;
+    }
+    if (OPERATORS.has(firstWord) || COMPARISON_PREDICATES_1.has(firstWord)) {
+        token = parser.currToken;
+        parser.index++;
+    }
+
+    if (firstWord === 'STARTING') {
+        parser.index++;
+        if (parser.currToken.text.toUpperCase() !== 'WITH') {
+            parser.problems.push({
+                start: parser.currToken.start,
+                end: parser.currToken.end,
+                message: `Expected 'WITH' in 'STARTING WITH' predicate, found: ${parser.currToken.text}`
+            })
+            parser.index--;
+        }
+        token = {
+            start,
+            end: parser.currToken.end,
+            text: parser.text.substring(start, parser.currToken.end)
+        };
+        parser.index++;
+    }
+    if (firstWord === 'SIMILAR') {
+        parser.index++;
+        if (parser.currToken.text.toUpperCase() !== 'TO') {
+            parser.problems.push({
+                start: parser.currToken.start,
+                end: parser.currToken.end,
+                message: `Expected 'TO' in 'SIMILAR TO' predicate, found: ${parser.currToken.text}`
+            })
+            parser.index--;
+        }
+        token = {
+            start,
+            end: parser.currToken.end,
+            text: parser.text.substring(start, parser.currToken.end)
+        };
+        parser.index++;
+    }
+    let precedence: number = 99
+    let unary: boolean = false
+    if (token) {
+        precedence = OPERATORS_PRECEDENCES[firstWord] ?? 99;
+        unary = UNARY.has(firstWord);
+    }
+    return token ? {token, precedence}: undefined;
+}
 
 export const RESERVED_WORDS = new Set([
     'ADD',
@@ -805,28 +956,3 @@ export const KEYWORDS = new Set([
     'YEARDAY',
     'ZONE',
 ]);
-
-export enum TokenType {
-    RegularIdentifier,
-    WhiteSpace,
-    Comment,
-    EOF,
-    Variable,
-    NonRegularIdentifier,
-    Operator,
-    Introducer,
-    String,
-    Integer,
-    FixedPoint,
-    FloatingPoint,
-    SpecialCharacter,
-    RParen,
-    LParen,
-    DotColon,
-    Asterisk,
-    Comma,
-    Dot
-}
-
-export const IDENTIFIER = new Set([TokenType.RegularIdentifier, TokenType.NonRegularIdentifier])
-export const LITERAL = new Set([TokenType.Integer, TokenType.FloatingPoint, TokenType.FixedPoint, TokenType.String])
