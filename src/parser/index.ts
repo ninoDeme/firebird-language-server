@@ -1,4 +1,4 @@
-import {State, BaseState, Problem} from './base';
+import {State, BaseState, Problem, Token} from './base';
 import {EmptyStatement, Statement, UnknownStatement} from './statement';
 import {SelectStatement} from './select';
 import {LexedToken, Lexer} from './lexer';
@@ -53,6 +53,14 @@ export class Parser {
             }
 
         } catch (e) {
+            if (e instanceof TokenError) {
+                this.problems.push({
+                    start: e.token.start,
+                    end: e.token.end,
+                    message: e.message,
+                    severity: 1
+                })
+            }
             console.error(e);
         }
         return this.parsed;
@@ -76,4 +84,10 @@ export function statement(parser: Parser, start: number = parser.index, subQuery
         return new EmptyStatement(parser);
     }
     return new UnknownStatement(parser, start);
+}
+
+export class TokenError extends Error {
+    constructor(public token: Token, message?: string) {
+        super(message || `Unexpected Token: ${token.text}`)
+    }
 }

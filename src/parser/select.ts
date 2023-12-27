@@ -81,8 +81,8 @@ export class SelectStatement extends Statement implements ParenthesisBody {
             } else if (currToken.text.toUpperCase() === 'FIRST') {
                 nextTokenError(this.parser, '"FIRST" must come before column list');
             } else {
-                nextTokenError(this.parser, 'Unknown Token');
-                this.parser.index;
+                nextTokenError(this.parser, 'Unknown Token: %s');
+                this.parser.index++;
             }
         }
     };
@@ -185,7 +185,7 @@ class JoinFrom extends BaseState {
     }
 
     parse() {
-        if (!this.source) {
+        if (!this.source && this.type) {
             if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
                 if (this.parser.currToken.text.toUpperCase() === 'JOIN') {
                     this.type === 'LEFT'
@@ -195,12 +195,18 @@ class JoinFrom extends BaseState {
                 }
 
                 if (this.parser.currToken.text.toUpperCase() !== 'JOIN') {
-                    return nextTokenError(this.parser, 'Expected "join" found _');
+                    return nextTokenError(this.parser, 'Expected "join" found %s');
                 }
                 this.parser.index++;
+            } else {
+                throw new Error('Unexpected Token: ' + this.parser.currToken.text)
             }
+        } else if (!this.source) {
+            const source = table(this.parser);
+            this.parser.state.push(source);
+            this.source = source;
         } else {
-            // TODO: end join
+
         }
     }
 
@@ -247,9 +253,12 @@ export function table(parser: Parser) {
         if (parser.tokenOffset(1).type === TokenType.LParen) {
             return new Procedure(parser);
         }
+        if (currToken.text.toUpperCase() === 'LATERAL') {
+            throw new Error('Not Implemented');
+        }
         return new BaseTable(parser);
     }
-    nextTokenError(parser, 'Invalid Token');
+    nextTokenError(parser, 'Invalid Token: %s');
     return new UnknownTable(parser);
 }
 
@@ -277,7 +286,7 @@ export class DerivedTable extends BaseTable implements State {
                 this.text = this.parser.text.substring(this.start, this.end);
                 this.flush();
             } else {
-                nextTokenError(this.parser, `Unknown Token`);
+                nextTokenError(this.parser, `Unknown Token: %s`);
             }
         } else {
             this.paren = new ExpressionParenthesis(this.parser.currToken, this.parser)

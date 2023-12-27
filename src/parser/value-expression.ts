@@ -194,31 +194,34 @@ export class OutputColumn extends BaseState {
     public alias?: Token;
     public collation?: Token;
 
+    flush(): void {
+        let isComma = this.parser.currToken.type === TokenType.Comma;
+        if (isComma) {
+            this.parser.index++;
+        }
+        this.end = this.parser.tokenOffset(-1).end;
+        this.text = this.parser.text.substring(this.start, this.end);
+        if (!this.expression) {
+            this.parser.problems.push({
+                start: this.start,
+                end: this.end,
+                severity: DiagnosticSeverity.Error,
+                message: `Empty Column Expression`
+            });
+        }
+        super.flush()
+        if (isComma) {
+            this.parent.addNewColumn();
+        }
+    }
     /*
         <output_column> ::= <qualifier>.*
                           | <value_expression> [COLLATE collation] [[AS] alias]
      */
     parse() {
         const currToken = this.parser.currToken;
-        let isComma = currToken.type === TokenType.Comma;
-        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || isComma) {
-            if (isComma) {
-                this.parser.index++;
-            }
-            this.end = this.parser.tokenOffset(-1).end;
-            this.text = this.parser.text.substring(this.start, this.end);
-            if (!this.expression) {
-                this.parser.problems.push({
-                    start: this.start,
-                    end: this.end,
-                    severity: DiagnosticSeverity.Error,
-                    message: `Empty Column Expression`
-                });
-            }
+        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
             this.flush();
-            if (isComma) {
-                this.parent.addNewColumn();
-            }
         } else if (this.expression) {
             if (currToken.text.toUpperCase() === 'COLLATE') {
                 throw new Error('Implement Collate');
@@ -299,7 +302,7 @@ export class IdentifierStar extends BaseState {
             this.text = this.parser.currText.substring(this.start, this.end);
             this.parser.index++;
         } else {
-            nextTokenError(this.parser, `Expected asterisk found ${next.text}`);
+            nextTokenError(this.parser, `Expected asterisk found %s`);
         }
         this.flush();
     }

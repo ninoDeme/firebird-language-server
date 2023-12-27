@@ -8,8 +8,8 @@ export function consumeCommentsAndWhitespace(parser: Parser, dontConsumeWhitespa
 export function nextTokenError(parser: Parser, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error) {
     parser.problems.push({
         start: parser.currToken.start,
-        end: parser.currToken.start,
-        message,
+        end: parser.currToken.end,
+        message: message.replace('%s', parser.currToken.text),
         severity
     });
 }
