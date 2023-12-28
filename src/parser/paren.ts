@@ -1,7 +1,7 @@
 import {Parser} from '.';
 import {State, Token} from './base';
 import {SelectStatement} from './select';
-import {TokenType} from './symbols';
+import {LexerType, ParserType} from './symbols';
 import {ValueExpression} from './value-expression';
 
 export interface ParenthesisBody extends State {
@@ -17,15 +17,16 @@ export abstract class BaseParenthesis implements Paren {
     text!: string;
     start!: number;
     end!: number;
+    type = ParserType.Parenthesis
 
     parser: Parser;
 
     insideParenthesis?: boolean;
     parse() {
-        if (this.parser.currToken.type === TokenType.RParen) {
+        if (this.parser.currToken.type === LexerType.RParen) {
             return this.flush();
         }
-        if (this.parser.currToken.type === TokenType.EOF || this.parser.currToken.type === TokenType.DotColon) {
+        if (this.parser.currToken.type === LexerType.EOF || this.parser.currToken.type === LexerType.DotColon) {
             this.parser.problems.push({
                 start: this.start,
                 end: this.parser.currToken.end,
@@ -50,13 +51,15 @@ export abstract class BaseParenthesis implements Paren {
     constructor(token: Token, parser: Parser) {
         this.start = token.start;
         this.parser = parser;
+        this.parser.index++;
     }
 }
 
 export class ExpressionParenthesis extends BaseParenthesis {
+    type = ParserType.ExpressionParenthesis
     parseBody() {
         const currToken = this.parser.currToken;
-        if (currToken.type === TokenType.Comma) {
+        if (currToken.type === LexerType.Comma) {
             this.parser.index++;
             let newExpression = new ValueExpression(this.parser)
             newExpression.insideParenthesis = true;

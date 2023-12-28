@@ -1,9 +1,8 @@
 import {TextDocument} from 'vscode-languageserver-textdocument';
 import {State, BaseState, Problem, Token} from './base';
-import {KEYWORDS, NON_REGULAR_IDENTIFIER_REGEX, OPERATORS_REGEX, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, TokenType, VARIABLE_REGEX} from './symbols';
+import {KEYWORDS, NON_REGULAR_IDENTIFIER_REGEX, OPERATORS_REGEX, REGULAR_IDENTIFIER_REGEX, RESERVED_WORDS, SPECIAL_CHARACTERS_REGEX, LexerType, VARIABLE_REGEX} from './symbols';
 
 export class Lexer {
-
 
     constructor(document: TextDocument | string) {
         if (typeof document === 'string') {
@@ -27,9 +26,9 @@ export class Lexer {
         this._index = value;
     }
 
-    comments: LexedToken[] = [];
-    whiteSpace: LexedToken[] = [];
-    tokens: LexedToken[] = [];
+    comments: Token[] = [];
+    whiteSpace: Token[] = [];
+    tokens: Token[] = [];
 
     problems: Problem[] = [];
 
@@ -49,15 +48,15 @@ export class Lexer {
         let match;
         do {
             match = this.getToken();
-            if (match.type === TokenType.Comment) {
+            if (match.type === LexerType.Comment) {
                 this.comments.push(match)
-            } else if (match.type === TokenType.WhiteSpace) {
+            } else if (match.type === LexerType.WhiteSpace) {
                 this.whiteSpace.push(match)
             } else {
                 this.tokens.push(match);
             }
             this.index += match.text.length;
-        } while (match?.type !== TokenType.EOF)
+        } while (match?.type !== LexerType.EOF)
 
         // let qtds: {[key in TokenType]?: number} = {};
         // for (let t of this.tokens) {
@@ -69,19 +68,19 @@ export class Lexer {
         return this.parsed;
     }
 
-    getToken(): LexedToken {
+    getToken(): Token {
         const currText = this.currText;
         if (currText.length === 0) {
-            return this.token('', TokenType.EOF);
+            return this.token('', LexerType.EOF);
         }
 
         let token = matchWS(currText);
         if (token) {
-            return this.token(token, TokenType.WhiteSpace);
+            return this.token(token, LexerType.WhiteSpace);
         }
 
         if (token = currText.match(REGULAR_IDENTIFIER_REGEX)?.[0]) {
-            let newToken = this.token(token, TokenType.RegularIdentifier) as LexedRegularIdentifier;
+            let newToken = this.token(token, LexerType.RegularIdentifier) as LexedRegularIdentifier;
             if (KEYWORDS.has(token.toUpperCase())) {
                 newToken.isKeyword = true;
                 if (RESERVED_WORDS.has(token.toUpperCase())) {
@@ -92,23 +91,23 @@ export class Lexer {
         }
 
         if (currText.startsWith('.')) {
-            return this.token('.', TokenType.Dot);
+            return this.token('.', LexerType.Dot);
         }
 
         if (currText.startsWith(',')) {
-            return this.token(',', TokenType.Comma);
+            return this.token(',', LexerType.Comma);
         }
 
         if (currText.startsWith('"') && (token = currText.match(NON_REGULAR_IDENTIFIER_REGEX)?.[0])) {
-            return this.token(token, TokenType.NonRegularIdentifier);
+            return this.token(token, LexerType.NonRegularIdentifier);
         }
 
         if (currText.startsWith(':') && (token = currText.match(VARIABLE_REGEX)?.[0])) {
-            return this.token(token, TokenType.Variable);
+            return this.token(token, LexerType.Variable);
         }
 
         if (currText.startsWith('_') && (token = currText.match(/^_[\w$]*/)?.[0])) {
-            return this.token(token, TokenType.Introducer);
+            return this.token(token, LexerType.Introducer);
         }
 
         let stringToken: LexedString | null;
@@ -118,56 +117,55 @@ export class Lexer {
 
         if (/^\d/.test(currText)) {
             if (token = currText.match(/^0x[\da-f]+/i)?.[0] || currText.match(/^\d+(?!\.|\d|e\d+)/)?.[0]) {
-                return this.token(token, TokenType.Integer);
+                return this.token(token, LexerType.Integer);
             }
 
             if (token = currText.match(/^\d+?\.\d+(?!\d|e\d+)/i)?.[0]) {
-                return this.token(token, TokenType.FixedPoint);
+                return this.token(token, LexerType.FixedPoint);
             }
 
             if (token = currText.match(/^\d+\.?\d+e-?\d*(?!\d)/i)?.[0]) {
-                return this.token(token, TokenType.FloatingPoint);
+                return this.token(token, LexerType.FloatingPoint);
             }
         }
         if (currText.startsWith('(')) {
-            return this.token('(', TokenType.LParen);
+            return this.token('(', LexerType.LParen);
         }
 
         if (currText.startsWith(')')) {
-            return this.token(')', TokenType.RParen);
+            return this.token(')', LexerType.RParen);
         }
 
         if (currText.startsWith(';')) {
-            return this.token(';', TokenType.DotColon);
+            return this.token(';', LexerType.DotColon);
         }
 
         if (currText.startsWith('*')) {
-            return this.token('*', TokenType.Asterisk);
+            return this.token('*', LexerType.Asterisk);
         }
 
         if (token = currText.match(/^(--.*|\/\*[\s\S]*?\*\/)/)?.[0]) {
-            return this.token(token, TokenType.Comment);
+            return this.token(token, LexerType.Comment);
         }
 
         if (token = currText.match(OPERATORS_REGEX)?.[0]) {
-            return this.token(token, TokenType.Operator);
+            return this.token(token, LexerType.Operator);
         }
 
         if (token = currText.match(SPECIAL_CHARACTERS_REGEX)?.[0]) {
-            return this.token(token, TokenType.SpecialCharacter);
+            return this.token(token, LexerType.SpecialCharacter);
         }
 
         throw new Error("Unknown character: " + currText[0]);
     }
 
-    token(text: string, type: TokenType) {
-        let t: Partial<LexedToken> = {};
+    token(text: string, type: LexerType) {
+        let t: Partial<Token> = {};
         t.start = this.index;
         t.end = this.index + text.length;
         t.text = text;
         t.type = type;
-        t.typeText = TokenType[type] as keyof typeof TokenType;
-        return t as LexedToken;
+        return t as Token;
     }
 }
 
@@ -208,25 +206,20 @@ function matchString(currText: string, lexer: Lexer): LexedString | null {
         res = currText.match(/^'((?:[^']|'')*)(?:'|($))/);
     }
     if (res) {
-        let token: Partial<LexedString> = lexer.token(res[0], TokenType.String) as LexedString;
+        let token: Partial<LexedString> = lexer.token(res[0], LexerType.String) as LexedString;
         token.contents = res[1];
         return token as LexedString;
     }
     return null;
 }
 
-export interface LexedToken extends Token {
-    type: TokenType;
-    typeText?: keyof typeof TokenType;
-}
-
-export interface LexedRegularIdentifier extends LexedToken {
-    type: TokenType.RegularIdentifier;
+export interface LexedRegularIdentifier extends Token {
+    type: LexerType.RegularIdentifier;
     isKeyword?: boolean;
     isReserved?: boolean;
 }
 
-export interface LexedString extends LexedToken {
-    type: TokenType.String;
+export interface LexedString extends Token {
+    type: LexerType.String;
     contents: string;
 }

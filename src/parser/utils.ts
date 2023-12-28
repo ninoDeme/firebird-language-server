@@ -1,7 +1,8 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {LexedRegularIdentifier, Token} from './lexer';
-import {TokenType} from './symbols';
+import {LexedRegularIdentifier} from './lexer';
+import {LexerType} from './symbols';
+import {Token} from './base';
 
 export function nextTokenError(parser: Parser, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error) {
     parser.problems.push({
@@ -21,5 +22,5 @@ export function tokenError(parser: Parser, message: string, token = parser.currT
     });
 }
 export function isRegularIdentifier(token: Token): token is LexedRegularIdentifier {
-    return token.type === TokenType.RegularIdentifier;
+    return token.type === LexerType.RegularIdentifier;
 }

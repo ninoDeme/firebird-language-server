@@ -1,8 +1,8 @@
 import {State, BaseState, Problem, Token} from './base';
 import {EmptyStatement, Statement, UnknownStatement} from './statement';
 import {SelectStatement} from './select';
-import {Token, Lexer} from './lexer';
-import {TokenType} from './symbols';
+import {Lexer} from './lexer';
+import {LexerType} from './symbols';
 
 export class Parser {
 
@@ -54,7 +54,10 @@ export class Parser {
                 this.state[this.state.length - 1].parse();
 
                 if (lastIndex === this.index) sameIndex++
-                else sameIndex = 0;
+                else {
+                    sameIndex = 0
+                    lastIndex = this.index;
+                };
 
                 if (sameIndex > 100) {
                     throw new TokenError(this.currToken, `Infinite Loop encountered at '${this.currToken.text}'`)
@@ -86,10 +89,10 @@ export class Parser {
 
 export function statement(parser: Parser, start: number = parser.index, subQuery?: boolean): Statement {
     const currToken = parser.currToken;
-    if (currToken.type === TokenType.RegularIdentifier && currToken.text.toUpperCase() === 'SELECT') {
+    if (currToken.type === LexerType.RegularIdentifier && currToken.text.toUpperCase() === 'SELECT') {
         return new SelectStatement(parser, start);
     }
-    else if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon || subQuery && currToken.type === TokenType.RParen) {
+    else if (currToken.type === LexerType.EOF || currToken.type === LexerType.DotColon || subQuery && currToken.type === LexerType.RParen) {
         return new EmptyStatement(parser);
     }
     return new UnknownStatement(parser, start);

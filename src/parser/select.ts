@@ -3,20 +3,22 @@ import {TokenError, type Parser} from '.';
 import {BaseState, BaseTable, BaseToken, JoinType, State, Table, Token} from './base';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
 import {Statement} from './statement';
-import {IDENTIFIER, LITERAL, TokenType} from './symbols';
+import {IDENTIFIER, LITERAL, LexerType, ParserType} from './symbols';
 import {isRegularIdentifier, nextTokenError, tokenError} from './utils';
 import {OutputColumn, ValueExpression} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement implements ParenthesisBody {
 
+    type = ParserType.SelectStatement;
     parse() {
         const currToken = this.parser.currToken;
         let end = false;
-        if (this.insideParenthesis && currToken.type === TokenType.RParen) {
+        if (this.insideParenthesis && currToken.type === LexerType.RParen) {
             end = true;
+            this.parser.index--;
         }
-        if (currToken.type === TokenType.EOF || currToken.type === TokenType.DotColon) {
+        if (currToken.type === LexerType.EOF || currToken.type === LexerType.DotColon) {
             if (this.insideParenthesis) {
                 this.parser.problems.push({
                     start: this.start,
@@ -40,7 +42,7 @@ export class SelectStatement extends Statement implements ParenthesisBody {
             return this.flush();
         }
         const tokenText = currToken.text.toUpperCase();
-        if (this.columnList.length === 0) {
+        if (this.columnList.length === 0 && !this.star) {
             if (tokenText === 'FIRST') {
                 if (this.skip) {
                     nextTokenError(this.parser, '"FIRST" must be before "SKIP"');
@@ -65,7 +67,7 @@ export class SelectStatement extends Statement implements ParenthesisBody {
                 const newFrom = new FromSelect(this.parser);
                 this.parser.state.push(newFrom);
                 this.from = newFrom;
-            } else if (currToken.type === TokenType.Asterisk) {
+            } else if (currToken.type === LexerType.Asterisk) {
                 if (this.columnList.length) {
                     nextTokenError(this.parser, `Columns and select asterisk provided`);
                 }
@@ -79,7 +81,7 @@ export class SelectStatement extends Statement implements ParenthesisBody {
                 this.parser.state.push(newFrom);
                 this.from = newFrom;
             } else if (tokenText === 'WHERE') {
-                const newWhere = new WhereSelect(this.parser);
+                const newWhere = new Where(this.parser);
                 this.parser.state.push(newWhere);
                 this.where = newWhere;
             } else if (tokenText === 'SKIP') {
@@ -104,7 +106,7 @@ export class SelectStatement extends Statement implements ParenthesisBody {
 
     from?: FromSelect;
 
-    where?: WhereSelect;
+    where?: Where;
 
     first?: SelectFirst;
     skip?: SelectSkip;
@@ -120,28 +122,27 @@ export class SelectStatement extends Statement implements ParenthesisBody {
 // class SelectFetch extends BaseLimitToken {}
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select-first-skip
-class FirstAndSkip extends BaseState {
+abstract class FirstAndSkip extends BaseState {
     delimiter?: Token;
 
     parse = () => {
         if (this.delimiter) return this.flush();
-        if (this.parser.currToken.type === TokenType.LParen) {
+        if (this.parser.currToken.type === LexerType.LParen) {
             let token = this.parser.currToken;
-            this.parser.index++;
             let parens = new ExpressionParenthesis(token, this.parser);
             this.parser.state.push(parens);
             this.delimiter = parens;
 
-        } else if (this.parser.currToken.type === TokenType.Variable) {
+        } else if (this.parser.currToken.type === LexerType.Variable) {
             this.parser.index++;
             this.delimiter = this.parser.currToken;
         } else {
             if (LITERAL.has(this.parser.currToken.type)) {
-                if (this.parser.currToken.type !== TokenType.Integer) {
+                if (this.parser.currToken.type !== LexerType.Integer) {
                     this.parser.problems.push({
                         start: this.parser.currToken.start,
                         end: this.parser.currToken.end,
-                        message: `Argument literal must be an integer, found ${TokenType[this.parser.currToken.type]}`
+                        message: `Argument literal must be an integer, found ${this.parser.currToken.type}`
                     });
                 }
                 this.delimiter = this.parser.currToken;
@@ -166,19 +167,21 @@ class FirstAndSkip extends BaseState {
         parser.index++;
     }
 }
-class SelectFirst extends FirstAndSkip {}
-class SelectSkip extends FirstAndSkip {}
+class SelectFirst extends FirstAndSkip {
+    type = ParserType.First;
+}
+class SelectSkip extends FirstAndSkip {
+    type = ParserType.Skip;
+}
 
 class SelectStar extends BaseToken {
     constructor(parser: Parser) {
         super({
             start: parser.index,
             end: ++parser.index,
-            text: '*'
+            text: '*',
+            type: ParserType.SelectStar
         });
-        if (/^[^;,\s]/.test(parser.currText)) {
-            nextTokenError(parser, `Invalid Token`);
-        }
     }
 }
 
@@ -187,6 +190,7 @@ class JoinFrom extends BaseState {
 
     static validJoinTokens = new Set(['NATURAL', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER']);
 
+    type = ParserType.Join;
     parse() {
         if (!this.source && !this.joinType) {
             if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
@@ -199,7 +203,7 @@ class JoinFrom extends BaseState {
                     if (this.parser.currToken.text.toUpperCase() === 'OUTER') {
                         this.parser.index++;
                         if (!JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
-                            throw new TokenError(this.parser.currToken,  `"${this.parser.currToken.text}" is not a valid JOIN type`)
+                            throw new TokenError(this.parser.currToken, `"${this.parser.currToken.text}" is not a valid JOIN type`);
                         }
                     }
                     this.joinType = this.parser.currToken.text as JoinType;
@@ -223,7 +227,7 @@ class JoinFrom extends BaseState {
             this.parser.state.push(source);
             this.source = source;
             return;
-        } 
+        }
         if (!this.condition) {
             switch (this.parser.currToken.text.toUpperCase()) {
                 case 'ON':
@@ -233,10 +237,10 @@ class JoinFrom extends BaseState {
                     return;
                 case 'USING':
                     this.parser.index++;
-                    if (this.parser.currToken.type !== TokenType.LParen) {
+                    if (this.parser.currToken.type !== LexerType.LParen) {
                         throw new TokenError(this.parser.currToken, `Expected '(', found ${this.parser.currToken}`);
                     }
-                    this.condition = new ColList(this.parser);
+                    this.condition = new JoinColumnList(this.parser);
                     this.parser.index++;
                     return;
                 default:
@@ -247,14 +251,15 @@ class JoinFrom extends BaseState {
         this.flush();
     }
 
-    condition?: ValueExpression | ColList;
+    condition?: ValueExpression | JoinColumnList;
 
     source?: Table;
     joinType?: JoinType;
 }
 
-class ColList extends BaseState {
+class JoinColumnList extends BaseState {
     columns: Token[] = [];
+    type = ParserType.JoinColumnList;
     parse() {
         while (true) {
             const currToken = this.parser.currToken;
@@ -269,11 +274,11 @@ class ColList extends BaseState {
                 this.columns.push(currToken);
                 this.parser.index++;
             }
-            if (currToken.type === TokenType.Comma) {
+            if (currToken.type === LexerType.Comma) {
                 this.parser.index++;
                 continue;
             }
-            if (currToken.type === TokenType.RParen) {
+            if (currToken.type === LexerType.RParen) {
                 this.parser.index++;
                 break;
             }
@@ -291,6 +296,7 @@ class FromSelect extends BaseState {
     joins: JoinFrom[] = [];
 
     source?: Table;
+    type = ParserType.From;
     parse() {
         if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
             let newJoin = new JoinFrom(this.parser);
@@ -316,10 +322,10 @@ class FromSelect extends BaseState {
 
 export function table(parser: Parser) {
     const currToken = parser.currToken;
-    if (currToken.type === TokenType.LParen) {
+    if (currToken.type === LexerType.LParen) {
         return new DerivedTable(parser);
     } else if (IDENTIFIER.has(currToken.type)) {
-        if (parser.tokenOffset(1).type === TokenType.LParen) {
+        if (parser.tokenOffset(1).type === LexerType.LParen) {
             return new Procedure(parser);
         }
         if (currToken.text.toUpperCase() === 'LATERAL') {
@@ -332,6 +338,8 @@ export function table(parser: Parser) {
 }
 
 export class UnknownTable extends BaseTable {
+
+    type = ParserType.UnknownTable;
     parse() {
         const token = this.parser.currToken;
         this.start = this.parser.index;
@@ -347,12 +355,14 @@ export class UnknownTable extends BaseTable {
 export class DerivedTable extends BaseTable implements State {
     paren?: ExpressionParenthesis;
 
+    type = ParserType.DerivedTable;
     parse() {
         if (this.paren) {
-            if (this.parser.currToken.type === TokenType.RParen) {
-                this.end = this.parser.currToken.end;
-                this.parser.index++;
+            const lastToken = this.parser.tokenOffset(-1);
+            if (lastToken.type === LexerType.RParen) {
+                this.end = lastToken.end;
                 this.text = this.parser.text.substring(this.start, this.end);
+                this.parseAlias();
                 this.flush();
             } else {
                 nextTokenError(this.parser, `Unknown Token: %s`);
@@ -368,14 +378,16 @@ export class Procedure extends BaseTable {
 
     args: Token[] = [];
 
+    type = ParserType.Procedure;
     parse() {
         throw new Error('not implemented');
     }
 
 }
 
-class WhereSelect extends BaseState {
+class Where extends BaseState {
 
+    type = ParserType.Where;
     condition?: ValueExpression;
     parse() {
         if (!this.condition) {

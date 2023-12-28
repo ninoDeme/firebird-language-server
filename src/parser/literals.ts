@@ -1,7 +1,6 @@
 import {Parser} from '.';
-import {BaseToken} from './base';
-import {Token} from './lexer';
-import {TokenType} from './symbols';
+import {BaseToken, Token} from './base';
+import {LexerType, ParserType, TokenType} from './symbols';
 
 export class Literal extends BaseToken {}
 
@@ -12,7 +11,7 @@ export class ParserString extends Literal {
     introducer?: Token;
 
     constructor(token: Token, introducer?: Token) {
-        super({start: introducer?.start ?? token.start, end: token.end, text: token.text})
+        super({start: introducer?.start ?? token.start, end: token.end, text: token.text, type: ParserType.ParserString})
         if ('contents' in token) {
             this.contents = token.contents as string;
         }
@@ -28,14 +27,14 @@ export class ParserTimeDate extends Literal {
         parser.index++;
         let str;
         let dateString;
-        if ([TokenType.String, TokenType.Introducer].includes(parser.currToken.type)) {
+        if ([LexerType.String, LexerType.Introducer].includes(parser.currToken.type as LexerType)) {
             let introducer: Token | undefined = undefined;
-            if (parser.currToken.type === TokenType.Introducer) {
+            if (parser.currToken.type === LexerType.Introducer) {
                 introducer = parser.currToken ;
                 parser.index++;
             }
             str = parser.currToken;
-            if (str.type !== TokenType.String) {
+            if (str.type !== LexerType.String) {
                 parser.problems.push({
                     start: parser.index,
                     end: parser.index + 1,
@@ -52,6 +51,7 @@ export class ParserTimeDate extends Literal {
             })
         }
         super({
+            type: ParserType.ParserTimeDate,
             start,
             end: parser.currToken.end,
             text: parser.text.substring(start, parser.currToken.end)

@@ -2,11 +2,11 @@ import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
 import {BaseState, BaseToken, State, Token} from './base';
 import {SelectStatement} from './select';
-import {IDENTIFIER, LITERAL, OPERATORS, REGULAR_IDENTIFIER, TokenType, getOperator} from './symbols';
+import {IDENTIFIER, LITERAL, OPERATORS, REGULAR_IDENTIFIER, LexerType, getOperator, ParserType} from './symbols';
 import {nextTokenError} from './utils';
 import {isEndOfStatement} from './statement';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
-import {LexedRegularIdentifier, Token} from './lexer';
+import {LexedRegularIdentifier} from './lexer';
 import {ParserTimeDate} from './literals';
 
 /*
@@ -23,6 +23,7 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
     insideParenthesis: boolean = false;
     private elements?: Token[] = [];
     body?: Token;
+    type = ParserType.ValueExpression
 
     processed: boolean = false;
     parse() {
@@ -86,14 +87,13 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
         if (!this.elements) throw new Error("Elements doesnt exist?");
         let currToken = this.parser.currToken;
         let lastOperator = !this.elements.length || (this.elements[this.elements.length - 1] instanceof Operator);
-        if (currToken.type === TokenType.LParen) {
-            this.parser.index += 1;
+        if (currToken.type === LexerType.LParen) {
             let parens = new ExpressionParenthesis(currToken, this.parser);
             this.elements.push(parens);
             this.parser.state.push(parens);
             return;
         }
-        if (currToken.type === TokenType.RParen || isEndOfStatement(currToken) || currToken.type === TokenType.Comma) {
+        if (currToken.type === LexerType.RParen || isEndOfStatement(currToken) || currToken.type === LexerType.Comma) {
             if (lastOperator) {
                 this.parser.problems.push({
                     start: currToken.start,
@@ -127,13 +127,13 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
         if (IDENTIFIER.has(currToken.type)) {
             this.parser.index += 1;
             let nextToken = this.parser.currToken;
-            if (nextToken.type === TokenType.LParen) {
+            if (nextToken.type === LexerType.LParen) {
                 let newFunction = new ParserFunction(currToken, this.parser);
                 this.elements.push(newFunction);
                 this.parser.state.push(newFunction);
                 return;
             }
-            if (nextToken.type === TokenType.Dot) {
+            if (nextToken.type === LexerType.Dot) {
                 let newFunction = new TableDereference(currToken, this.parser);
                 this.elements.push(newFunction);
                 return;
@@ -146,7 +146,7 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
             this.elements.push(currToken);
             return;
         }
-        if (currToken.type === TokenType.Variable) {
+        if (currToken.type === LexerType.Variable) {
             this.elements.push(currToken);
             return;
         }
@@ -173,6 +173,7 @@ export class Operator implements Token, State {
     precedence: number = 99; // precedence = <type-precedence><operator-precedence>
     symbol: Token;
     unary?: boolean;
+    type = LexerType.Operator
 
     constructor(token: Token, precedence: number, parser: Parser) {
         this.parser = parser;
@@ -202,8 +203,10 @@ export class OutputColumn extends BaseState {
     public alias?: Token;
     public collation?: Token;
 
+    public type = ParserType.OutputColumn
+
     flush(): void {
-        let isComma = this.parser.currToken.type === TokenType.Comma;
+        let isComma = this.parser.currToken.type === LexerType.Comma;
         if (isComma) {
             this.parser.index++;
         }
@@ -228,7 +231,7 @@ export class OutputColumn extends BaseState {
      */
     parse() {
         const currToken = this.parser.currToken;
-        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === TokenType.Comma) {
+        if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === LexerType.Comma) {
             this.flush();
         } else if (this.expression) {
             if (currToken.text.toUpperCase() === 'COLLATE') {
@@ -236,7 +239,7 @@ export class OutputColumn extends BaseState {
             }
             this.parseAlias();
             this.flush();
-        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokenOffset(1).type === TokenType.Dot && this.parser.tokenOffset(2).type === TokenType.Asterisk) {
+        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokenOffset(1).type === LexerType.Dot && this.parser.tokenOffset(2).type === LexerType.Asterisk) {
             this.expression = new IdentifierStar(this.parser);
             this.parser.state.push(this.expression);
         } else {
@@ -296,6 +299,8 @@ export class IdentifierStar extends BaseState {
     identifier!: Token;
     dot!: Token;
     asterisk!: Token;
+
+    type = ParserType.IdentifierStar
     parse() {
         this.identifier = this.parser.currToken;
         this.parser.index++;
@@ -304,7 +309,7 @@ export class IdentifierStar extends BaseState {
 
         this.parser.index++;
         let next = this.parser.currToken;
-        if (next.type === TokenType.Asterisk) {
+        if (next.type === LexerType.Asterisk) {
             this.asterisk = next;
             this.end = next.end;
             this.text = this.parser.currText.substring(this.start, this.end);
@@ -321,14 +326,15 @@ export class ParserFunction implements State, Token {
     start!: number;
     end!: number;
     head: Token;
+    type = ParserType.ParserFunction
 
     parser: Parser;
     parse() {
-        if (this.parser.currToken.type === TokenType.RParen) {
+        if (this.parser.currToken.type === LexerType.RParen) {
             this.parser.index++;
             return this.flush();
         }
-        if (this.parser.currToken.type === TokenType.EOF || this.parser.currToken.type === TokenType.DotColon) {
+        if (this.parser.currToken.type === LexerType.EOF || this.parser.currToken.type === LexerType.DotColon) {
             this.parser.problems.push({
                 start: this.start,
                 end: this.parser.currToken.end,
@@ -337,7 +343,7 @@ export class ParserFunction implements State, Token {
             return this.flush();
         }
         const currToken = this.parser.currToken;
-        if (currToken.type === TokenType.Comma) {
+        if (currToken.type === LexerType.Comma) {
             this.parser.index++;
             let newExpression = new ValueExpression(this.parser);
             newExpression.insideParenthesis = true;
@@ -377,7 +383,7 @@ export class ParserFunction implements State, Token {
 export class TableDereference implements BaseToken {
     left: Token;
     right?: Token;
-
+    type = ParserType.TableDereference;
     text: string;
     start: number;
     end: number;

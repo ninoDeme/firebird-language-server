@@ -1,9 +1,9 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {IDENTIFIER} from './symbols';
+import {IDENTIFIER, LexerType, ParserType, TokenType} from './symbols';
 import {LexedRegularIdentifier} from './lexer';
 
-export class BaseState implements State, Token {
+export abstract class BaseState implements State, Token {
     parser: Parser;
     static match: RegExp;
     parse() {
@@ -15,41 +15,31 @@ export class BaseState implements State, Token {
     text!: string;
     start!: number;
     end!: number;
+    abstract type: TokenType;
     constructor(parser: Parser, start?: number) {
         this.parser = parser;
         this.start = start ?? parser.currToken.start;
     }
 }
 
-export class BaseToken implements Token {
+export abstract class BaseToken implements Token {
     text: string;
     start: number;
     end: number;
+    type: TokenType;
 
-    constructor(token: Token);
-    constructor(token: string, parser: Parser);
-    constructor(token: Token | string, parser?: Parser) {
-        if (typeof token !== 'string') {
-            this.start = token.start;
-            this.end = token.end;
-            this.text = token.text;
-        } else {
-            this.text = token;
-            if (parser) {
-                this.start = parser.index;
-                parser.index++;
-                this.end = parser.index;
-            } else {
-                this.start = 0;
-                this.end = this.text.length;
-            }
-        }
+    constructor(token: Token) {
+        this.start = token.start;
+        this.end = token.end;
+        this.text = token.text;
+        this.type = token.type;
     }
 }
 
 export class BaseTable extends BaseState implements Table {
     identifier?: Token;
     alias?: Token;
+    type = ParserType.Table
 
     parse() {
         const token = this.parser.currToken;
@@ -120,6 +110,7 @@ export interface Token {
     text: string;
     start: number;
     end: number;
+    type: TokenType;
 }
 
 

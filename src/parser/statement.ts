@@ -1,11 +1,10 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser, statement} from '.';
-import {BaseState, State} from './base';
-import {TokenType} from './symbols';
-import {Token} from './lexer';
+import {BaseState, State, Token} from './base';
+import {LexerType, ParserType} from './symbols';
 import {ParenthesisBody} from './paren';
 
-export class Statement extends BaseState implements ParenthesisBody {
+export abstract class Statement extends BaseState implements ParenthesisBody {
 
     insideParenthesis: boolean;
 
@@ -31,6 +30,7 @@ export class EmptyStatement extends Statement {
         this.flush();
     };
 
+    type = ParserType.EmptyStatement
     constructor(parser: Parser, start?: number) {
         super(parser, start);
         this.parser.index++;
@@ -39,9 +39,10 @@ export class EmptyStatement extends Statement {
 
 export class UnknownStatement extends Statement {
     tokens: Token[] = [];
+    type = ParserType.UnknownStatement
     parse() {
         let token = this.parser.currToken;
-        if (token.type === TokenType.RegularIdentifier) {
+        if (token.type === LexerType.RegularIdentifier) {
             this.parser.problems.push({
                 start: token.start,
                 end: token.end,
@@ -68,5 +69,5 @@ export class UnknownStatement extends Statement {
 }
 
 export function isEndOfStatement(token: Token, subQuery?: boolean) {
-    return token.type === TokenType.EOF || token.type === TokenType.DotColon || (subQuery && token.type === TokenType.RParen)
+    return token.type === LexerType.EOF || token.type === LexerType.DotColon || (subQuery && token.type === LexerType.RParen)
 }
