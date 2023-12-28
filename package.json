@@ -2,7 +2,7 @@
   "name": "firebird-language-server",
   "version": "0.0.1",
   "description": "Language Server for Firebird SQL",
-  "main": "build/index.js",
+  "main": "build/cli.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",

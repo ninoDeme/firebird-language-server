@@ -6,7 +6,7 @@ import {IDENTIFIER, LITERAL, OPERATORS, REGULAR_IDENTIFIER, TokenType, getOperat
 import {nextTokenError} from './utils';
 import {isEndOfStatement} from './statement';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
-import {LexedRegularIdentifier, LexedToken} from './lexer';
+import {LexedRegularIdentifier, Token} from './lexer';
 import {ParserTimeDate} from './literals';
 
 /*
@@ -21,7 +21,7 @@ import {ParserTimeDate} from './literals';
 */
 export class ValueExpression extends BaseState implements ParenthesisBody {
     insideParenthesis: boolean = false;
-    elements: Token[] = [];
+    private elements?: Token[] = [];
     body?: Token;
 
     processed: boolean = false;
@@ -29,6 +29,10 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
         if (!this.processed) {
             return this.preprocess();
         }
+        if (this.body) {
+            return this.flush();
+        }
+        if (!this.elements) throw new Error("Elements doesnt exist?");
         let highestPrecedenceIndex: undefined | number = undefined;
         let highestPrecedence: number = 0;
         for (let i in this.elements) {
@@ -41,8 +45,9 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
         if (highestPrecedenceIndex != null) {
             let operator = this.elements[highestPrecedenceIndex] as Operator;
 
+            this.parser.state.push(operator);
             let right = new ValueExpression(this.parser, this.elements.slice(highestPrecedenceIndex + 1));
-            if (right.elements.length === 0) {
+            if (right.elements!.length === 0) {
                 if (!operator.unary) {
                     throw new Error("Unexpected Empty Expression");
                 }
@@ -52,7 +57,7 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
             }
 
             let left = new ValueExpression(this.parser, this.elements.slice(0, highestPrecedenceIndex));
-            if (left.elements.length === 0) {
+            if (left.elements!.length === 0) {
                 if (!operator.unary) {
                     throw new Error("Unexpected Empty Expression");
                 }
@@ -60,22 +65,25 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
                 this.parser.state.push(left);
                 operator.left = left;
             }
-            this.parser.state.push(operator)
             this.elements = [operator];
         }
-        this.flush();
+        if (this.elements.length !== 1) {
+            throw new Error("Expected a single element in valueExpression, found " + this.elements.length);
+        }
+        this.body = this.elements[0];
     }
 
     flush() {
-        if (this.elements.length !== 1) {
-            throw new Error("Expected a single element to while flushing valuexpression, found " + this.elements.length);
+        if (!this.body) {
+            throw new Error("Body is empty?");
         }
-        this.body = this.elements[0];
         this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
-        this.end = this.elements[this.elements.length - 1].end;
-        this.text = this.parser.text.substring(this.start, this.end)
+        this.end = this.body.end || this.elements?.[this.elements.length - 1].end!;
+        this.text = this.parser.text.substring(this.start, this.end);
+        delete this.elements;
     }
     preprocess() {
+        if (!this.elements) throw new Error("Elements doesnt exist?");
         let currToken = this.parser.currToken;
         let lastOperator = !this.elements.length || (this.elements[this.elements.length - 1] instanceof Operator);
         if (currToken.type === TokenType.LParen) {
@@ -91,7 +99,7 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
                     start: currToken.start,
                     end: currToken.end,
                     message: `Expected expression, found: '${currToken.text}'`
-                })
+                });
             }
             this.processed = true;
             return;
@@ -104,7 +112,7 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
                     start: currToken.start,
                     end: currToken.end,
                     message: `Expected expression, found: '${currToken.text}'`
-                })
+                });
             } else if (lastOperator) {
                 newOperator.unary = true;
                 newOperator.precedence = 1;
@@ -177,9 +185,9 @@ export class Operator implements Token, State {
     };
     flush() {
         this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
-        this.end = this.right?.end ?? this.symbol.end
-        this.start = this.left?.start ?? this.symbol.start
-        this.text = this.parser.text.substring(this.start, this.end)
+        this.end = this.right?.end ?? this.symbol.end;
+        this.start = this.left?.start ?? this.symbol.start;
+        this.text = this.parser.text.substring(this.start, this.end);
     };
     text!: string;
     start!: number;
@@ -209,7 +217,7 @@ export class OutputColumn extends BaseState {
                 message: `Empty Column Expression`
             });
         }
-        super.flush()
+        super.flush();
         if (isComma) {
             this.parent.addNewColumn();
         }

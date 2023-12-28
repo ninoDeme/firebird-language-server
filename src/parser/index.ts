@@ -1,7 +1,7 @@
 import {State, BaseState, Problem, Token} from './base';
 import {EmptyStatement, Statement, UnknownStatement} from './statement';
 import {SelectStatement} from './select';
-import {LexedToken, Lexer} from './lexer';
+import {Token, Lexer} from './lexer';
 import {TokenType} from './symbols';
 
 export class Parser {
@@ -13,7 +13,7 @@ export class Parser {
         this.index = index;
     }
 
-    tokens: LexedToken[];
+    tokens: Token[];
 
     private lexer: Lexer;
     state: State[] = [];
@@ -45,11 +45,20 @@ export class Parser {
 
     parse() {
         try {
+            let sameIndex = 0;
+            let lastIndex = 0;
             this.index = 0;
             this.state = [statement(this)];
 
             while (this.state.length > 0) {
                 this.state[this.state.length - 1].parse();
+
+                if (lastIndex === this.index) sameIndex++
+                else sameIndex = 0;
+
+                if (sameIndex > 100) {
+                    throw new TokenError(this.currToken, `Infinite Loop encountered at '${this.currToken.text}'`)
+                }
             }
 
         } catch (e) {

@@ -65,7 +65,7 @@ fs.readFile(fileName, 'utf8', async (err, data) => {
       let charNumber = textUntilChar.pop()?.length || 0;
       let line = data.split('\n')[lineNumber - 1]
       console.log(`\
-${FgGreen}${fileName}${Reset}:${lineNumber}:${charNumber} - ${SeverityText[p.severity || 1]}: ${p.message}
+${FgGreen}${fileName}:${lineNumber}:${charNumber}${Reset} - ${SeverityText[p.severity || 1]}: ${p.message}
 
 ${BgWhite}${FgBlack}${lineNumber}${Reset}${line.substring(0, charNumber)}${Underscore}${line.substring(charNumber,  p.end - (p.start - charNumber))}${Reset}${line.substring(p.end - (p.start - charNumber))}
       `);

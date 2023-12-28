@@ -2,7 +2,7 @@ import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser, statement} from '.';
 import {BaseState, State} from './base';
 import {TokenType} from './symbols';
-import {LexedToken} from './lexer';
+import {Token} from './lexer';
 import {ParenthesisBody} from './paren';
 
 export class Statement extends BaseState implements ParenthesisBody {
@@ -38,7 +38,7 @@ export class EmptyStatement extends Statement {
 }
 
 export class UnknownStatement extends Statement {
-    tokens: LexedToken[] = [];
+    tokens: Token[] = [];
     parse() {
         let token = this.parser.currToken;
         if (token.type === TokenType.RegularIdentifier) {
@@ -67,6 +67,6 @@ export class UnknownStatement extends Statement {
     }
 }
 
-export function isEndOfStatement(token: LexedToken, subQuery?: boolean) {
+export function isEndOfStatement(token: Token, subQuery?: boolean) {
     return token.type === TokenType.EOF || token.type === TokenType.DotColon || (subQuery && token.type === TokenType.RParen)
 }

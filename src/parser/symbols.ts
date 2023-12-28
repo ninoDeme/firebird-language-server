@@ -112,29 +112,29 @@ export const UNARY = new Set([
     // 'IS'
 ])
 
-export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...CONCATENATION_OPERATORS].sort((a, b) => b.length - a.length));
+export const OPERATORS = new Set([...ARITHMETIC_OPERATORS, ...COMPARISON_OPERATORS, ...CONCATENATION_OPERATORS, ...LOGICAL_OPERATORS].sort((a, b) => b.length - a.length));
 export const OPERATORS_REGEX = /^(<[>=]?|>=?|[!~^][<>=]|\|\||[-+*\/=])/;
 
 export enum TokenType {
-    RegularIdentifier,
-    WhiteSpace,
-    Comment,
-    EOF,
-    Variable,
-    NonRegularIdentifier,
-    Operator,
-    Introducer,
-    String,
-    Integer,
-    FixedPoint,
-    FloatingPoint,
-    SpecialCharacter,
-    RParen,
-    LParen,
-    DotColon,
-    Asterisk,
-    Comma,
-    Dot
+    RegularIdentifier = "RegularIdentifier",
+    WhiteSpace = "WhiteSpace",
+    Comment = "Comment",
+    EOF = "EOF",
+    Variable = "Variable",
+    NonRegularIdentifier = "NonRegularIdentifier",
+    Operator = "Operator",
+    Introducer = "Introducer",
+    String = "String",
+    Integer = "Integer",
+    FixedPoint = "FixedPoint",
+    FloatingPoint = "FloatingPoint",
+    SpecialCharacter = "SpecialCharacter",
+    RParen = "RParen",
+    LParen = "LParen",
+    DotColon = "DotColon",
+    Asterisk = "Asterisk",
+    Comma = "Comma",
+    Dot = "Dot"
 }
 
 export const IDENTIFIER = new Set([TokenType.RegularIdentifier, TokenType.NonRegularIdentifier])

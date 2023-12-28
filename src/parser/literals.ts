@@ -1,6 +1,6 @@
 import {Parser} from '.';
 import {BaseToken} from './base';
-import {LexedToken} from './lexer';
+import {Token} from './lexer';
 import {TokenType} from './symbols';
 
 export class Literal extends BaseToken {}
@@ -9,9 +9,9 @@ export class ParserString extends Literal {
 
     contents?: string;
 
-    introducer?: LexedToken;
+    introducer?: Token;
 
-    constructor(token: LexedToken, introducer?: LexedToken) {
+    constructor(token: Token, introducer?: Token) {
         super({start: introducer?.start ?? token.start, end: token.end, text: token.text})
         if ('contents' in token) {
             this.contents = token.contents as string;
@@ -29,7 +29,7 @@ export class ParserTimeDate extends Literal {
         let str;
         let dateString;
         if ([TokenType.String, TokenType.Introducer].includes(parser.currToken.type)) {
-            let introducer: LexedToken | undefined = undefined;
+            let introducer: Token | undefined = undefined;
             if (parser.currToken.type === TokenType.Introducer) {
                 introducer = parser.currToken ;
                 parser.index++;

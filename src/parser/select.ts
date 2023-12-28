@@ -1,15 +1,16 @@
-import {type Parser} from '.';
+import {DiagnosticSeverity} from 'vscode-languageserver-types';
+import {TokenError, type Parser} from '.';
 import {BaseState, BaseTable, BaseToken, JoinType, State, Table, Token} from './base';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
 import {Statement} from './statement';
 import {IDENTIFIER, LITERAL, TokenType} from './symbols';
-import {nextTokenError} from './utils';
-import {OutputColumn} from './value-expression';
+import {isRegularIdentifier, nextTokenError, tokenError} from './utils';
+import {OutputColumn, ValueExpression} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement implements ParenthesisBody {
 
-    parse = () => {
+    parse() {
         const currToken = this.parser.currToken;
         let end = false;
         if (this.insideParenthesis && currToken.type === TokenType.RParen) {
@@ -38,8 +39,9 @@ export class SelectStatement extends Statement implements ParenthesisBody {
             this.text = this.parser.text.substring(this.start, this.end);
             return this.flush();
         }
+        const tokenText = currToken.text.toUpperCase();
         if (this.columnList.length === 0) {
-            if (currToken.text.toUpperCase() === 'FIRST') {
+            if (tokenText === 'FIRST') {
                 if (this.skip) {
                     nextTokenError(this.parser, '"FIRST" must be before "SKIP"');
                 }
@@ -48,13 +50,13 @@ export class SelectStatement extends Statement implements ParenthesisBody {
                 }
                 this.first = new SelectFirst(this.parser);
                 return this.parser.state.push(this.first);
-            } else if (currToken.text.toUpperCase() === 'SKIP') {
+            } else if (tokenText === 'SKIP') {
                 if (this.skip) {
                     nextTokenError(this.parser, 'Duplicate "SKIP" statement');
                 }
                 this.skip = new SelectFirst(this.parser);
                 return this.parser.state.push(this.skip);
-            } else if (currToken.text.toUpperCase() === 'FROM') {
+            } else if (tokenText === 'FROM') {
                 this.parser.problems.push({
                     start: this.parser.index,
                     end: currToken.end,
@@ -72,13 +74,17 @@ export class SelectStatement extends Statement implements ParenthesisBody {
                 this.addNewColumn();
             }
         } else {
-            if (currToken.text.toUpperCase() === 'FROM') {
+            if (tokenText === 'FROM') {
                 const newFrom = new FromSelect(this.parser);
                 this.parser.state.push(newFrom);
                 this.from = newFrom;
-            } else if (currToken.text.toUpperCase() === 'SKIP') {
+            } else if (tokenText === 'WHERE') {
+                const newWhere = new WhereSelect(this.parser);
+                this.parser.state.push(newWhere);
+                this.where = newWhere;
+            } else if (tokenText === 'SKIP') {
                 nextTokenError(this.parser, '"SKIP" must come before column list');
-            } else if (currToken.text.toUpperCase() === 'FIRST') {
+            } else if (tokenText === 'FIRST') {
                 nextTokenError(this.parser, '"FIRST" must come before column list');
             } else {
                 nextTokenError(this.parser, 'Unknown Token: %s');
@@ -97,6 +103,8 @@ export class SelectStatement extends Statement implements ParenthesisBody {
     star?: SelectStar;
 
     from?: FromSelect;
+
+    where?: WhereSelect;
 
     first?: SelectFirst;
     skip?: SelectSkip;
@@ -177,44 +185,103 @@ class SelectStar extends BaseToken {
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select-joins
 class JoinFrom extends BaseState {
 
-    parent: FromSelect;
-    static validJoinTokens = new Set(['NATURAL', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL']);
-    constructor(parser: Parser, parent: FromSelect) {
-        super(parser);
-        this.parent = parent;
-    }
+    static validJoinTokens = new Set(['NATURAL', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER']);
 
     parse() {
-        if (!this.source && this.type) {
+        if (!this.source && !this.joinType) {
             if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
                 if (this.parser.currToken.text.toUpperCase() === 'JOIN') {
-                    this.type === 'LEFT'
+                    this.joinType = 'LEFT';
+                } else if (this.parser.currToken.text.toUpperCase() === 'OUTER') {
+                    this.joinType = 'LEFT';
+                    this.parser.index++;
                 } else {
-                    this.type === this.parser.currToken.text;
+                    if (this.parser.currToken.text.toUpperCase() === 'OUTER') {
+                        this.parser.index++;
+                        if (!JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
+                            throw new TokenError(this.parser.currToken,  `"${this.parser.currToken.text}" is not a valid JOIN type`)
+                        }
+                    }
+                    this.joinType = this.parser.currToken.text as JoinType;
                     this.parser.index++;
                 }
 
                 if (this.parser.currToken.text.toUpperCase() !== 'JOIN') {
-                    return nextTokenError(this.parser, 'Expected "join" found %s');
+                    throw new TokenError(this.parser.currToken, `Expected "JOIN" found ${this.parser.currToken}`);
                 }
                 this.parser.index++;
+                return;
+            } else if (['CROSS'].includes(this.parser.currToken.text.toUpperCase())) {
+                // TODO: CROSS and NATURAL joins
+                throw new Error('CROSS joins are not implemented');
             } else {
-                throw new Error('Unexpected Token: ' + this.parser.currToken.text)
+                throw new TokenError(this.parser.currToken, 'Unexpected Token: ' + this.parser.currToken.text);
             }
-        } else if (!this.source) {
+        }
+        if (!this.source) {
             const source = table(this.parser);
             this.parser.state.push(source);
             this.source = source;
-        } else {
-
+            return;
+        } 
+        if (!this.condition) {
+            switch (this.parser.currToken.text.toUpperCase()) {
+                case 'ON':
+                    this.parser.index++;
+                    this.condition = new ValueExpression(this.parser);
+                    this.parser.state.push(this.condition);
+                    return;
+                case 'USING':
+                    this.parser.index++;
+                    if (this.parser.currToken.type !== TokenType.LParen) {
+                        throw new TokenError(this.parser.currToken, `Expected '(', found ${this.parser.currToken}`);
+                    }
+                    this.condition = new ColList(this.parser);
+                    this.parser.index++;
+                    return;
+                default:
+                    throw new TokenError(this.parser.currToken, `Expected 'USING' or 'ON' clause, found ${this.parser.currToken}`);
+            }
         }
+        this.end = this.condition.end;
+        this.flush();
     }
 
+    condition?: ValueExpression | ColList;
+
     source?: Table;
-    type?: JoinType;
-    flush() {
-        this.parent.joins.push(this);
-        super.flush();
+    joinType?: JoinType;
+}
+
+class ColList extends BaseState {
+    columns: Token[] = [];
+    parse() {
+        while (true) {
+            const currToken = this.parser.currToken;
+            if (IDENTIFIER.has(currToken.type)) {
+                if (isRegularIdentifier(currToken)) {
+                    if (currToken.isReserved) {
+                        tokenError(this.parser, `Invalid alias, '%s' is a reserved keyword`);
+                    } else if (currToken.isKeyword) {
+                        nextTokenError(this.parser, `'%s' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`, DiagnosticSeverity.Warning);
+                    }
+                }
+                this.columns.push(currToken);
+                this.parser.index++;
+            }
+            if (currToken.type === TokenType.Comma) {
+                this.parser.index++;
+                continue;
+            }
+            if (currToken.type === TokenType.RParen) {
+                this.parser.index++;
+                break;
+            }
+            throw new TokenError(currToken);
+        }
+        this.end = this.parser.tokenOffset(-1).end;
+        this.text = this.parser.currText.substring(this.start, this.end);
+        return this.flush();
     }
 }
 
@@ -226,7 +293,9 @@ class FromSelect extends BaseState {
     source?: Table;
     parse() {
         if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
-            this.parser.state.push(new JoinFrom(this.parser, this));
+            let newJoin = new JoinFrom(this.parser);
+            this.parser.state.push(newJoin);
+            this.joins.push(newJoin);
         } else if (this.joins.length || this.source) {
             let lastToken = this.parser.tokenOffset(-1);
             this.end = lastToken.end;
@@ -266,7 +335,7 @@ export class UnknownTable extends BaseTable {
     parse() {
         const token = this.parser.currToken;
         this.start = this.parser.index;
-        this.name = token;
+        this.identifier = token;
         this.parser.index++;
 
         this.parseAlias();
@@ -289,7 +358,7 @@ export class DerivedTable extends BaseTable implements State {
                 nextTokenError(this.parser, `Unknown Token: %s`);
             }
         } else {
-            this.paren = new ExpressionParenthesis(this.parser.currToken, this.parser)
+            this.paren = new ExpressionParenthesis(this.parser.currToken, this.parser);
             this.parser.state.push(this.paren);
         }
     }
@@ -303,4 +372,24 @@ export class Procedure extends BaseTable {
         throw new Error('not implemented');
     }
 
+}
+
+class WhereSelect extends BaseState {
+
+    condition?: ValueExpression;
+    parse() {
+        if (!this.condition) {
+            const ve = new ValueExpression(this.parser);
+            this.parser.state.push(ve);
+            this.condition = ve;
+            return;
+        }
+        this.end = this.condition.end;
+        this.flush();
+    }
+
+    constructor(parser: Parser) {
+        super(parser);
+        this.parser.index++;
+    }
 }

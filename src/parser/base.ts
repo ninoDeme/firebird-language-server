@@ -48,16 +48,18 @@ export class BaseToken implements Token {
 }
 
 export class BaseTable extends BaseState implements Table {
-    name?: Token;
+    identifier?: Token;
     alias?: Token;
 
     parse() {
         const token = this.parser.currToken;
         this.start = token.start;
-        this.name = token;
+        this.identifier = token;
         this.parser.index++;
 
         this.parseAlias();
+
+        this.end = this.alias?.end || this.identifier.end;
 
         this.flush();
     }
@@ -104,7 +106,7 @@ export class BaseTable extends BaseState implements Table {
 }
 
 export interface Table {
-    name?: Token;
+    identifier?: Token;
     alias?: Token;
 }
 

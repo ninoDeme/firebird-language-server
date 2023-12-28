@@ -2,11 +2,11 @@ SELECT first 1
     customers.customer_id,
 
     (gaming2 * 2) + -customers.customer_name + 512 + taasdqwd * Gaming,
-    COUNT(orders.order_id || "asd") AS total_orders
+    COUNT(orders.order_id || "asd") AS total_orders,
     SUM(order_details.quantity * products.price) AS total_spent
 FROM
     customers
--- JOIN orders ON customers.customer_id = orders.customer_id
+JOIN orders ON customers.customer_id = orders.customer_id
 -- JOIN
 --     order_details ON orders.order_id = order_details.order_id
 -- JOIN
