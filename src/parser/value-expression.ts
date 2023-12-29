@@ -9,6 +9,7 @@ import {ExpressionParenthesis, ParenthesisBody} from './paren';
 import {LexedRegularIdentifier} from './lexer';
 import {ParserTimeDate} from './literals';
 
+export interface ValueExpression extends Token, ParenthesisBody {};
 /*
 <value_expression> ::= [<qualifier>.]col_name
                      | [<qualifier>.]selectable_SP_outparm
@@ -19,10 +20,10 @@ import {ParserTimeDate} from './literals';
                      | <CASE-construct>
                      | any other expression returning a single value of a Firebird data type or NULL
 */
-export class ValueExpression extends BaseState implements ParenthesisBody {
+export class ValueExpressionFactory implements ParenthesisBody, State {
     insideParenthesis: boolean = false;
     private elements?: Token[] = [];
-    body?: Token;
+    body?: ValueExpression;
     type = ParserType.ValueExpression
 
     processed: boolean = false;
@@ -47,31 +48,29 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
             let operator = this.elements[highestPrecedenceIndex] as Operator;
 
             this.parser.state.push(operator);
-            let right = new ValueExpression(this.parser, this.elements.slice(highestPrecedenceIndex + 1));
+            let right = new ValueExpressionFactory(this.parser, (b) => operator.right = b,this.elements.slice(highestPrecedenceIndex + 1));
             if (right.elements!.length === 0) {
                 if (!operator.unary) {
                     throw new Error("Unexpected Empty Expression");
                 }
             } else {
                 this.parser.state.push(right);
-                operator.right = right;
             }
 
-            let left = new ValueExpression(this.parser, this.elements.slice(0, highestPrecedenceIndex));
+            let left = new ValueExpressionFactory(this.parser, (b) => operator.left = b, this.elements.slice(0, highestPrecedenceIndex));
             if (left.elements!.length === 0) {
                 if (!operator.unary) {
                     throw new Error("Unexpected Empty Expression");
                 }
             } else {
                 this.parser.state.push(left);
-                operator.left = left;
             }
             this.elements = [operator];
         }
         if (this.elements.length !== 1) {
             throw new Error("Expected a single element in valueExpression, found " + this.elements.length);
         }
-        this.body = this.elements[0];
+        this.body = this.elements[0] as ValueExpression;
     }
 
     flush() {
@@ -79,12 +78,11 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
             throw new Error("Body is empty?");
         }
         this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
-        this.end = this.body.end || this.elements?.[this.elements.length - 1].end!;
-        this.text = this.parser.text.substring(this.start, this.end);
         delete this.elements;
+        this.callback(this.body);
     }
     preprocess() {
-        if (!this.elements) throw new Error("Elements doesnt exist?");
+        if (!this.elements) throw new Error("Elements doesn't exist?");
         let currToken = this.parser.currToken;
         let lastOperator = !this.elements.length || (this.elements[this.elements.length - 1] instanceof Operator);
         if (currToken.type === LexerType.LParen) {
@@ -157,11 +155,9 @@ export class ValueExpression extends BaseState implements ParenthesisBody {
         }
     }
 
-    constructor(parser: Parser, elements?: Token[]) {
-        super(parser);
+    constructor(public parser: Parser, public callback: (body: ValueExpression) => void, elements?: Token[]) {
         if (elements?.length) {
             this.elements = elements;
-            this.start = elements[0].start;
             this.processed = true;
         }
     }
@@ -241,10 +237,9 @@ export class OutputColumn extends BaseState {
             this.flush();
         } else if (IDENTIFIER.has(currToken.type) && this.parser.tokenOffset(1).type === LexerType.Dot && this.parser.tokenOffset(2).type === LexerType.Asterisk) {
             this.expression = new IdentifierStar(this.parser);
-            this.parser.state.push(this.expression);
+            this.parser.state.push(this.expression as IdentifierStar);
         } else {
-            this.expression = new ValueExpression(this.parser);
-            this.parser.state.push(this.expression);
+            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.expression = b));
         }
     }
 
@@ -345,9 +340,8 @@ export class ParserFunction implements State, Token {
         const currToken = this.parser.currToken;
         if (currToken.type === LexerType.Comma) {
             this.parser.index++;
-            let newExpression = new ValueExpression(this.parser);
+            let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body.push(b));
             newExpression.insideParenthesis = true;
-            this.body?.push(newExpression);
             this.parser.state.push(newExpression);
             return;
         }
@@ -359,9 +353,8 @@ export class ParserFunction implements State, Token {
             });
             return this.parser.index++;
         }
-        let newExpression = new ValueExpression(this.parser);
+        let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body.push(b));
         newExpression.insideParenthesis = true;
-        this.body?.push(newExpression);
         this.parser.state.push(newExpression);
     };
 

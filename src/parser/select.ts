@@ -5,7 +5,7 @@ import {ExpressionParenthesis, ParenthesisBody} from './paren';
 import {Statement} from './statement';
 import {IDENTIFIER, LITERAL, LexerType, ParserType} from './symbols';
 import {isRegularIdentifier, nextTokenError, tokenError} from './utils';
-import {OutputColumn, ValueExpression} from './value-expression';
+import {OutputColumn, ValueExpression, ValueExpressionFactory} from './value-expression';
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement implements ParenthesisBody {
@@ -232,8 +232,7 @@ class JoinFrom extends BaseState {
             switch (this.parser.currToken.text.toUpperCase()) {
                 case 'ON':
                     this.parser.index++;
-                    this.condition = new ValueExpression(this.parser);
-                    this.parser.state.push(this.condition);
+                    this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
                     return;
                 case 'USING':
                     this.parser.index++;
@@ -391,9 +390,7 @@ class Where extends BaseState {
     condition?: ValueExpression;
     parse() {
         if (!this.condition) {
-            const ve = new ValueExpression(this.parser);
-            this.parser.state.push(ve);
-            this.condition = ve;
+            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
             return;
         }
         this.end = this.condition.end;

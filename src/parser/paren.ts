@@ -2,7 +2,7 @@ import {Parser} from '.';
 import {State, Token} from './base';
 import {SelectStatement} from './select';
 import {LexerType, ParserType} from './symbols';
-import {ValueExpression} from './value-expression';
+import {ValueExpression, ValueExpressionFactory} from './value-expression';
 
 export interface ParenthesisBody extends State {
     insideParenthesis?: boolean;
@@ -47,7 +47,7 @@ export abstract class BaseParenthesis implements Paren {
         this.parser.index++;
     };
 
-    body?: ParenthesisBody[];
+    body: (ParenthesisBody & ValueExpression)[] = [];
     constructor(token: Token, parser: Parser) {
         this.start = token.start;
         this.parser = parser;
@@ -58,12 +58,12 @@ export abstract class BaseParenthesis implements Paren {
 export class ExpressionParenthesis extends BaseParenthesis {
     type = ParserType.ExpressionParenthesis
     parseBody() {
+        if (!this.body) throw new Error("Body is null?");
         const currToken = this.parser.currToken;
         if (currToken.type === LexerType.Comma) {
             this.parser.index++;
-            let newExpression = new ValueExpression(this.parser)
+            let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body!.push(b))
             newExpression.insideParenthesis = true;
-            this.body?.push(newExpression);
             this.parser.state.push(newExpression);
             return;
         }
@@ -80,9 +80,8 @@ export class ExpressionParenthesis extends BaseParenthesis {
             this.parser.state.push(this.body[0]);
             return;
         }
-        let newExpression = new ValueExpression(this.parser)
+        let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body!.push(b))
         newExpression.insideParenthesis = true;
-        this.body?.push(newExpression);
         this.parser.state.push(newExpression);
         return;
     }
