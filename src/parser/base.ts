@@ -1,6 +1,6 @@
 import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
-import {IDENTIFIER, LexerType, ParserType, TokenType} from './symbols';
+import {IDENTIFIER, ParserType, TokenType} from './symbols';
 import {LexedRegularIdentifier} from './lexer';
 
 export abstract class BaseState implements State, Token {
@@ -102,8 +102,8 @@ export interface Table {
 
 export interface State {
     parser: Parser;
-    parse: () => void;
-    flush: () => void;
+    parse: () => any;
+    flush: () => any;
 }
 
 export interface Token {
@@ -119,10 +119,23 @@ export interface FunctionBody extends State {
 }
 
 
+export interface ProblemFix {
+    message: string;
+    fixed?: string;
+}
+
+export interface ProblemError {
+    start: number;
+    end: number;
+    message: string;
+}
+
 export interface Problem {
     start: number;
     end: number;
     message: string;
+    error?: ProblemError
+    fix?: ProblemFix
     severity?: DiagnosticSeverity;
 }
 

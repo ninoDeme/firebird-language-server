@@ -1,10 +1,17 @@
-SELECT first 1
-    *
+--
+-- This is an example query
+--
+SELECT
+	foo, bar as baz
 FROM
- (select * from dsadasdqwd)
+	mytable
 JOIN orders ON customers.customer_id = orders.customer_id
--- JOIN
---     order_details ON orders.order_id = order_details.order_id
+JOIN
+    order_details using (id)
+WHERE
+	foo LIKE '%neat%'
+group by foo, bar
+having gaming
 -- JOIN
 --     products ON order_details.product_id = products.product_id
 -- WHERE

@@ -1,4 +1,4 @@
-import {State, BaseState, Problem, Token} from './base';
+import {State, BaseState, Problem, Token, ProblemError, ProblemFix} from './base';
 import {EmptyStatement, Statement, UnknownStatement} from './statement';
 import {SelectStatement} from './select';
 import {Lexer} from './lexer';
@@ -53,14 +53,14 @@ export class Parser {
             while (this.state.length > 0) {
                 this.state[this.state.length - 1].parse();
 
-                if (lastIndex === this.index) sameIndex++
+                if (lastIndex === this.index) sameIndex++;
                 else {
-                    sameIndex = 0
+                    sameIndex = 0;
                     lastIndex = this.index;
                 };
 
                 if (sameIndex > 100) {
-                    throw new TokenError(this.currToken, `Infinite Loop encountered at '${this.currToken.text}'`)
+                    throw new TokenError(this.currToken, `Infinite Loop encountered at '${this.currToken.text}'`);
                 }
             }
 
@@ -71,7 +71,7 @@ export class Parser {
                     end: e.token.end,
                     message: e.message,
                     severity: 1
-                })
+                });
             }
             console.error(e);
         }
@@ -83,7 +83,7 @@ export class Parser {
     }
 
     clone() {
-        return new Parser(this.lexer, this.index)
+        return new Parser(this.lexer, this.index);
     }
 }
 
@@ -99,7 +99,11 @@ export function statement(parser: Parser, start: number = parser.index, subQuery
 }
 
 export class TokenError extends Error {
-    constructor(public token: Token, message?: string) {
-        super(message || `Unexpected Token: ${token.text}`)
+    constructor(public token: Token, message?: string, {error, fix}: {error?: ProblemError, fix?: ProblemFix;} = {}) {
+        super(message || `Unexpected Token: ${token.text}`);
+        this.error = error;
+        this.fix = fix;
     }
+    error?: ProblemError;
+    fix?: ProblemFix;
 }

@@ -2,16 +2,35 @@ import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {TokenError, type Parser} from '.';
 import {BaseState, BaseTable, BaseToken, JoinType, State, Table, Token} from './base';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
-import {Statement} from './statement';
+import {Statement, isEndOfStatement} from './statement';
 import {IDENTIFIER, LITERAL, LexerType, ParserType} from './symbols';
 import {isRegularIdentifier, nextTokenError, tokenError} from './utils';
 import {OutputColumn, ValueExpression, ValueExpressionFactory} from './value-expression';
+
+const SELECT_ORDER = [['first'], ['skip'], ['columnList', 'Column List'], ['from'], ['join'], ['where'], ['groupBy', 'GROUP BY clause'], ['window'], ['plan'], ['union'], ['orderBy', 'OBDER BY clause'], ['rows'], ['offset'], ['fetch'], ['forUpdate', 'FOR UPDATE clause'], ['withLock', 'WITH LOCK clause'], ['into']];
+
+function checkSelectOrder(select: SelectStatement, el: string) {
+    let orderIndex = SELECT_ORDER.findIndex(item => item[0] === el);
+    if (orderIndex === -1) {
+        throw new Error(`Unknown Select Element: ${el}`);
+    }
+    if (select.orderIndex! === orderIndex + 1) {
+        throw new TokenError(select.parser.currToken, `Duplicate ${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in select statement`);
+    }
+    if (select.orderIndex! > orderIndex) {
+        throw new TokenError(select.parser.currToken, `${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in incorrect order on select statement`);
+    }
+    return orderIndex + 1;
+}
 
 // https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref40/firebird-40-language-reference.html#fblangref40-dml-select
 export class SelectStatement extends Statement implements ParenthesisBody {
 
     type = ParserType.SelectStatement;
+
+    orderIndex?: number;
     parse() {
+        this.orderIndex ??= 0;
         const currToken = this.parser.currToken;
         let end = false;
         if (this.insideParenthesis && currToken.type === LexerType.RParen) {
@@ -41,58 +60,54 @@ export class SelectStatement extends Statement implements ParenthesisBody {
             this.text = this.parser.text.substring(this.start, this.end);
             return this.flush();
         }
+
         const tokenText = currToken.text.toUpperCase();
-        if (this.columnList.length === 0 && !this.star) {
-            if (tokenText === 'FIRST') {
-                if (this.skip) {
-                    nextTokenError(this.parser, '"FIRST" must be before "SKIP"');
-                }
-                if (this.first) {
-                    nextTokenError(this.parser, 'Duplicate "FIRST" statement');
-                }
-                this.first = new SelectFirst(this.parser);
-                return this.parser.state.push(this.first);
-            } else if (tokenText === 'SKIP') {
-                if (this.skip) {
-                    nextTokenError(this.parser, 'Duplicate "SKIP" statement');
-                }
-                this.skip = new SelectFirst(this.parser);
-                return this.parser.state.push(this.skip);
-            } else if (tokenText === 'FROM') {
+        if (tokenText === 'FIRST') {
+            this.orderIndex = checkSelectOrder(this, 'first');
+            this.first = new SelectFirst(this.parser);
+            return this.parser.state.push(this.first);
+        }
+        if (tokenText === 'SKIP') {
+            this.orderIndex = checkSelectOrder(this, 'skip');
+            this.skip = new SelectFirst(this.parser);
+            return this.parser.state.push(this.skip);
+        }
+        if (currToken.type === LexerType.Asterisk) {
+            this.orderIndex = checkSelectOrder(this, 'columnList');
+            return this.star = new SelectStar(this.parser);
+        }
+        if (tokenText === 'FROM') {
+            if (this.columnList.length === 0 && !this.star) {
                 this.parser.problems.push({
                     start: this.parser.index,
                     end: currToken.end,
                     message: 'No Columns in "SELECT" statement'
                 });
-                const newFrom = new FromSelect(this.parser);
-                this.parser.state.push(newFrom);
-                this.from = newFrom;
-            } else if (currToken.type === LexerType.Asterisk) {
-                if (this.columnList.length) {
-                    nextTokenError(this.parser, `Columns and select asterisk provided`);
-                }
-                this.star = new SelectStar(this.parser);
+                this.orderIndex = 4;
             } else {
-                this.addNewColumn();
+                this.orderIndex = checkSelectOrder(this, 'from');
             }
-        } else {
-            if (tokenText === 'FROM') {
-                const newFrom = new FromSelect(this.parser);
-                this.parser.state.push(newFrom);
-                this.from = newFrom;
-            } else if (tokenText === 'WHERE') {
-                const newWhere = new Where(this.parser);
-                this.parser.state.push(newWhere);
-                this.where = newWhere;
-            } else if (tokenText === 'SKIP') {
-                nextTokenError(this.parser, '"SKIP" must come before column list');
-            } else if (tokenText === 'FIRST') {
-                nextTokenError(this.parser, '"FIRST" must come before column list');
-            } else {
-                nextTokenError(this.parser, 'Unknown Token: %s');
-                this.parser.index++;
-            }
+            const newFrom = new FromSelect(this.parser);
+            this.parser.state.push(newFrom);
+            return this.from = newFrom;
         }
+        if (tokenText === 'WHERE') {
+            this.orderIndex = checkSelectOrder(this, 'where');
+            const newWhere = new Where(this.parser);
+            this.parser.state.push(newWhere);
+            return this.where = newWhere;
+        }
+        if (tokenText === 'GROUP') {
+            this.orderIndex = checkSelectOrder(this, 'groupBy');
+            const newGroupBy = new GroupBy(this.parser);
+            this.parser.state.push(newGroupBy);
+            return this.groupBy = newGroupBy;
+        }
+        if (this.columnList.length === 0 && !this.star) {
+            this.orderIndex = checkSelectOrder(this, 'columnList');
+            return this.addNewColumn();
+        }
+        throw new TokenError(this.parser.currToken);
     };
 
     addNewColumn() {
@@ -107,6 +122,8 @@ export class SelectStatement extends Statement implements ParenthesisBody {
     from?: FromSelect;
 
     where?: Where;
+
+    groupBy?: GroupBy;
 
     first?: SelectFirst;
     skip?: SelectSkip;
@@ -240,6 +257,7 @@ class JoinFrom extends BaseState {
                         throw new TokenError(this.parser.currToken, `Expected '(', found ${this.parser.currToken}`);
                     }
                     this.condition = new JoinColumnList(this.parser);
+                    this.parser.state.push(this.condition);
                     this.parser.index++;
                     return;
                 default:
@@ -273,15 +291,15 @@ class JoinColumnList extends BaseState {
                 this.columns.push(currToken);
                 this.parser.index++;
             }
-            if (currToken.type === LexerType.Comma) {
+            if (this.parser.currToken.type === LexerType.Comma) {
                 this.parser.index++;
                 continue;
             }
-            if (currToken.type === LexerType.RParen) {
+            if (this.parser.currToken.type === LexerType.RParen) {
                 this.parser.index++;
                 break;
             }
-            throw new TokenError(currToken);
+            throw new TokenError(this.parser.currToken);
         }
         this.end = this.parser.tokenOffset(-1).end;
         this.text = this.parser.currText.substring(this.start, this.end);
@@ -387,6 +405,89 @@ export class Procedure extends BaseTable {
 class Where extends BaseState {
 
     type = ParserType.Where;
+    condition?: ValueExpression;
+    parse() {
+        if (!this.condition) {
+            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
+            return;
+        }
+        this.end = this.condition.end;
+        this.flush();
+    }
+
+    constructor(parser: Parser) {
+        super(parser);
+        this.parser.index++;
+    }
+}
+
+export class GroupBy extends BaseState {
+
+    public columns: ValueExpression[] = [];
+
+    public type = ParserType.GroupBy;
+
+    flush(): void {
+        this.end = this.parser.tokenOffset(-1).end;
+        this.text = this.parser.text.substring(this.start, this.end);
+        if (!this.columns.length) {
+            this.parser.problems.push({
+                start: this.start,
+                end: this.end,
+                severity: DiagnosticSeverity.Error,
+                message: `Empty Group By Expression`
+            });
+        }
+        super.flush();
+    }
+    parse() {
+        const currToken = this.parser.currToken;
+        if (currToken.type === LexerType.Comma) {
+            if (this.columns.length === 0) {
+                this.parser.problems.push({
+                    start: this.start,
+                    end: currToken.end,
+                    severity: DiagnosticSeverity.Error,
+                    message: `Unexpected Token: ','`
+                });
+            }
+            this.parser.index++;
+            return this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.columns.push(b)));
+        }
+        if (currToken.text.toUpperCase() === 'HAVING') {
+            if (this.having) {
+                throw new TokenError(currToken, `Duplicate 'HAVING' clause in 'GROUP BY' expression`);
+            }
+            if (this.columns.length === 0) {
+                throw new TokenError(currToken, `Empty 'GROUP BY' clause`);
+            }
+            const newHaving = new HavingClause(this.parser);
+            this.parser.state.push(newHaving);
+            return this.having = newHaving;
+        }
+        if (this.columns.length === 0 && !isEndOfStatement(currToken)) {
+            return this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.columns.push(b)));
+        }
+        return this.flush();
+    }
+
+    constructor(parser: Parser) {
+        super(parser);
+        this.start = this.parser.currToken.start;
+
+        this.parser.index++;
+        if (this.parser.currToken.text.toUpperCase() !== 'BY') {
+            throw new TokenError(this.parser.currToken, `Expected 'BY', found ${this.parser.currToken.text}`);
+        }
+        this.parser.index++;
+    }
+
+    having?: HavingClause;
+}
+
+class HavingClause extends BaseState {
+
+    type = ParserType.HavingClause;
     condition?: ValueExpression;
     parse() {
         if (!this.condition) {
