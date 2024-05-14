@@ -2,7 +2,7 @@ import {DiagnosticSeverity} from 'vscode-languageserver-types';
 import {Parser} from '.';
 import {BaseState, BaseToken, State, Token} from './base';
 import {SelectStatement} from './select';
-import {IDENTIFIER, LITERAL, OPERATORS, REGULAR_IDENTIFIER, LexerType, getOperator, ParserType} from './symbols';
+import {IDENTIFIER, LITERAL, LexerType, getOperator, ParserType} from './symbols';
 import {nextTokenError} from './utils';
 import {isEndOfStatement} from './statement';
 import {ExpressionParenthesis, ParenthesisBody} from './paren';
@@ -47,23 +47,33 @@ export class ValueExpressionFactory implements ParenthesisBody, State {
         if (highestPrecedenceIndex != null) {
             let operator = this.elements[highestPrecedenceIndex] as Operator;
 
-            this.parser.state.push(operator);
-            let right = new ValueExpressionFactory(this.parser, (b) => operator.right = b,this.elements.slice(highestPrecedenceIndex + 1));
-            if (right.elements!.length === 0) {
-                if (!operator.unary) {
-                    throw new Error("Unexpected Empty Expression");
-                }
-            } else {
-                this.parser.state.push(right);
-            }
-
-            let left = new ValueExpressionFactory(this.parser, (b) => operator.left = b, this.elements.slice(0, highestPrecedenceIndex));
+            this._parser.state.push(operator);
+            let left = new ValueExpressionFactory(this._parser, (b) => operator.left = b, this.elements.slice(0, highestPrecedenceIndex));
             if (left.elements!.length === 0) {
                 if (!operator.unary) {
-                    throw new Error("Unexpected Empty Expression");
+                    this._parser.problems.push({
+                        start: operator.end,
+                        end: operator.end,
+                        message: "Expected Expression, found nothing"
+                    });
+                    operator.left = new EmptyExpression(operator.end);
                 }
             } else {
-                this.parser.state.push(left);
+                this._parser.state.push(left);
+            }
+
+            let right = new ValueExpressionFactory(this._parser, (b) => operator.right = b, this.elements.slice(highestPrecedenceIndex + 1));
+            if (right.elements!.length === 0) {
+                if (!operator.unary) {
+                    this._parser.problems.push({
+                        start: operator.end,
+                        end: operator.end,
+                        message: "Expected Expression, found nothing"
+                    });
+                    operator.right = new EmptyExpression(operator.end);
+                }
+            } else {
+                this._parser.state.push(right);
             }
             this.elements = [operator];
         }
@@ -77,23 +87,23 @@ export class ValueExpressionFactory implements ParenthesisBody, State {
         if (!this.body) {
             throw new Error("Body is empty?");
         }
-        this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
+        this._parser.state.splice(this._parser.state.findIndex(el => el === this), 1);
         delete this.elements;
         this.callback(this.body);
     }
     preprocess() {
         if (!this.elements) throw new Error("Elements doesn't exist?");
-        let currToken = this.parser.currToken;
+        let currToken = this._parser.currToken;
         let lastOperator = !this.elements.length || (this.elements[this.elements.length - 1] instanceof Operator);
         if (currToken.type === LexerType.LParen) {
-            let parens = new ExpressionParenthesis(currToken, this.parser);
+            let parens = new ExpressionParenthesis(currToken, this._parser);
             this.elements.push(parens);
-            this.parser.state.push(parens);
+            this._parser.state.push(parens);
             return;
         }
         if (currToken.type === LexerType.RParen || isEndOfStatement(currToken) || currToken.type === LexerType.Comma) {
             if (lastOperator) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: currToken.start,
                     end: currToken.end,
                     message: `Expected expression, found: '${currToken.text}'`
@@ -102,20 +112,21 @@ export class ValueExpressionFactory implements ParenthesisBody, State {
             this.processed = true;
             return;
         }
-        let predicate = getOperator(this.parser);
+        let predicate = getOperator(this._parser);
         if (predicate) {
-            let newOperator = new Operator(predicate.token, predicate.precedence, this.parser);
+            let newOperator = new Operator(predicate.token, predicate.precedence, this._parser);
+            this.elements.push(newOperator);
             if (lastOperator && newOperator.symbol.text !== '+' && newOperator.symbol.text !== '-') {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: currToken.start,
                     end: currToken.end,
                     message: `Expected expression, found: '${currToken.text}'`
                 });
+                this.elements.push(new EmptyExpression(currToken.start));
             } else if (lastOperator) {
                 newOperator.unary = true;
                 newOperator.precedence = 1;
             }
-            this.elements.push(newOperator);
             return;
         }
         if (!lastOperator) {
@@ -123,21 +134,21 @@ export class ValueExpressionFactory implements ParenthesisBody, State {
             return;
         }
         if (IDENTIFIER.has(currToken.type)) {
-            this.parser.index += 1;
-            let nextToken = this.parser.currToken;
+            this._parser.index += 1;
+            let nextToken = this._parser.currToken;
             if (nextToken.type === LexerType.LParen) {
-                let newFunction = new ParserFunction(currToken, this.parser);
+                let newFunction = new ParserFunction(currToken, this._parser);
                 this.elements.push(newFunction);
-                this.parser.state.push(newFunction);
+                this._parser.state.push(newFunction);
                 return;
             }
             if (nextToken.type === LexerType.Dot) {
-                let newFunction = new TableDereference(currToken, this.parser);
+                let newFunction = new TableDereference(currToken, this._parser);
                 this.elements.push(newFunction);
                 return;
             }
             if (['DATE', 'TIMESTAMP', 'TIME'].includes(currToken.text.toUpperCase())) {
-                let newFunction = new ParserTimeDate(this.parser);
+                let newFunction = new ParserTimeDate(this._parser);
                 this.elements.push(newFunction);
                 return;
             }
@@ -150,16 +161,27 @@ export class ValueExpressionFactory implements ParenthesisBody, State {
         }
         if (LITERAL.has(currToken.type)) {
             // TODO: Literal
-            this.parser.index++;
+            this._parser.index++;
             this.elements.push(currToken);
         }
     }
 
-    constructor(public parser: Parser, public callback: (body: ValueExpression) => void, elements?: Token[]) {
+    constructor(public _parser: Parser, public callback: (body: ValueExpression) => void, elements?: Token[]) {
         if (elements?.length) {
             this.elements = elements;
             this.processed = true;
         }
+    }
+}
+
+export class EmptyExpression implements Token {
+    type = ParserType.EmptyExpression;
+    text = "";
+    start: number;
+    end: number;
+    constructor(cursor: number) {
+        this.start = cursor;
+        this.end = cursor
     }
 }
 
@@ -172,19 +194,19 @@ export class Operator implements Token, State {
     type = LexerType.Operator
 
     constructor(token: Token, precedence: number, parser: Parser) {
-        this.parser = parser;
+        this._parser = parser;
         this.precedence = precedence;
         this.symbol = token;
     }
-    parser: Parser;
+    _parser: Parser;
     parse() {
         this.flush();
     };
     flush() {
-        this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
+        this._parser.state.splice(this._parser.state.findIndex(el => el === this), 1);
         this.end = this.right?.end ?? this.symbol.end;
         this.start = this.left?.start ?? this.symbol.start;
-        this.text = this.parser.text.substring(this.start, this.end);
+        this.text = this._parser.text.substring(this.start, this.end);
     };
     text!: string;
     start!: number;
@@ -195,21 +217,21 @@ export class Operator implements Token, State {
 export class OutputColumn extends BaseState {
 
     public expression?: ValueExpression | IdentifierStar;
-    public parent: SelectStatement;
+    public _parent: SelectStatement;
     public alias?: Token;
     public collation?: Token;
 
     public type = ParserType.OutputColumn
 
     flush(): void {
-        let isComma = this.parser.currToken.type === LexerType.Comma;
+        let isComma = this._parser.currToken.type === LexerType.Comma;
         if (isComma) {
-            this.parser.index++;
+            this._parser.index++;
         }
-        this.end = this.parser.tokenOffset(-1).end;
-        this.text = this.parser.text.substring(this.start, this.end);
+        this.end = this._parser.tokenOffset(-1).end;
+        this.text = this._parser.text.substring(this.start, this.end);
         if (!this.expression) {
-            this.parser.problems.push({
+            this._parser.problems.push({
                 start: this.start,
                 end: this.end,
                 severity: DiagnosticSeverity.Error,
@@ -218,7 +240,7 @@ export class OutputColumn extends BaseState {
         }
         super.flush();
         if (isComma) {
-            this.parent.addNewColumn();
+            this._parent.addNewColumn();
         }
     }
     /*
@@ -226,7 +248,7 @@ export class OutputColumn extends BaseState {
                           | <value_expression> [COLLATE collation] [[AS] alias]
      */
     parse() {
-        const currToken = this.parser.currToken;
+        const currToken = this._parser.currToken;
         if (isEndOfStatement(currToken) || currToken.text.toUpperCase() === 'FROM' || currToken.type === LexerType.Comma) {
             this.flush();
         } else if (this.expression) {
@@ -235,26 +257,26 @@ export class OutputColumn extends BaseState {
             }
             this.parseAlias();
             this.flush();
-        } else if (IDENTIFIER.has(currToken.type) && this.parser.tokenOffset(1).type === LexerType.Dot && this.parser.tokenOffset(2).type === LexerType.Asterisk) {
-            this.expression = new IdentifierStar(this.parser);
-            this.parser.state.push(this.expression as IdentifierStar);
+        } else if (IDENTIFIER.has(currToken.type) && this._parser.tokenOffset(1).type === LexerType.Dot && this._parser.tokenOffset(2).type === LexerType.Asterisk) {
+            this.expression = new IdentifierStar(this._parser);
+            this._parser.state.push(this.expression as IdentifierStar);
         } else {
-            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.expression = b));
+            this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.expression = b));
         }
     }
 
     parseAlias() {
         let hasAS = false;
-        if (this.parser.currToken.text.toUpperCase() === 'AS') {
-            this.parser.index++;
+        if (this._parser.currToken.text.toUpperCase() === 'AS') {
+            this._parser.index++;
             hasAS = true;
         }
 
-        const token = this.parser.currToken;
+        const token = this._parser.currToken;
 
         if (IDENTIFIER.has(token.type) && !(token as LexedRegularIdentifier).isReserved) {
             if ((token as LexedRegularIdentifier).isKeyword) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: token.start,
                     end: token.end,
                     message: `'${token.text}' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`,
@@ -262,20 +284,20 @@ export class OutputColumn extends BaseState {
                 });
             }
             this.alias = token;
-            this.parser.index++;
+            this._parser.index++;
         } else if (hasAS) {
             if ((token as LexedRegularIdentifier).isReserved) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: token.start,
                     end: token.end,
-                    message: `Invalid alias, '${token}' is a reserved keyword`
+                    message: `Invalid alias, '${token.text}' is a reserved keyword`
                 });
                 this.alias = token;
-                this.parser.index++;
+                this._parser.index++;
             } else {
-                this.parser.problems.push({
-                    start: this.parser.index,
-                    end: this.parser.index,
+                this._parser.problems.push({
+                    start: this._parser.index,
+                    end: this._parser.index,
                     message: `Missing or invalid Alias`
                 });
             }
@@ -284,8 +306,8 @@ export class OutputColumn extends BaseState {
 
     constructor(parser: Parser, parent: SelectStatement) {
         super(parser);
-        this.start = this.parser.currToken.start;
-        this.parent = parent;
+        this.start = this._parser.currToken.start;
+        this._parent = parent;
     }
 }
 
@@ -297,20 +319,20 @@ export class IdentifierStar extends BaseState {
 
     type = ParserType.IdentifierStar
     parse() {
-        this.identifier = this.parser.currToken;
-        this.parser.index++;
+        this.identifier = this._parser.currToken;
+        this._parser.index++;
         this.start = this.identifier.start;
-        this.dot = this.parser.currToken;
+        this.dot = this._parser.currToken;
 
-        this.parser.index++;
-        let next = this.parser.currToken;
+        this._parser.index++;
+        let next = this._parser.currToken;
         if (next.type === LexerType.Asterisk) {
             this.asterisk = next;
             this.end = next.end;
-            this.text = this.parser.currText.substring(this.start, this.end);
-            this.parser.index++;
+            this.text = this._parser.currText.substring(this.start, this.end);
+            this._parser.index++;
         } else {
-            nextTokenError(this.parser, `Expected asterisk found %s`);
+            nextTokenError(this._parser, `Expected asterisk found %s`);
         }
         this.flush();
     }
@@ -323,53 +345,53 @@ export class ParserFunction implements State, Token {
     head: Token;
     type = ParserType.ParserFunction
 
-    parser: Parser;
+    _parser: Parser;
     parse() {
-        if (this.parser.currToken.type === LexerType.RParen) {
-            this.parser.index++;
+        if (this._parser.currToken.type === LexerType.RParen) {
+            this._parser.index++;
             return this.flush();
         }
-        if (this.parser.currToken.type === LexerType.EOF || this.parser.currToken.type === LexerType.DotColon) {
-            this.parser.problems.push({
+        if (this._parser.currToken.type === LexerType.EOF || this._parser.currToken.type === LexerType.DotColon) {
+            this._parser.problems.push({
                 start: this.start,
-                end: this.parser.currToken.end,
+                end: this._parser.currToken.end,
                 message: `Unterminated Parenthesis`
             });
             return this.flush();
         }
-        const currToken = this.parser.currToken;
+        const currToken = this._parser.currToken;
         if (currToken.type === LexerType.Comma) {
-            this.parser.index++;
-            let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body.push(b));
+            this._parser.index++;
+            let newExpression = new ValueExpressionFactory(this._parser, (b) => this.body.push(b));
             newExpression.insideParenthesis = true;
-            this.parser.state.push(newExpression);
+            this._parser.state.push(newExpression);
             return;
         }
         if (this.body?.[0]) {
-            this.parser.problems.push({
+            this._parser.problems.push({
                 start: currToken.start,
                 end: currToken.end,
                 message: `Unknown Token: '${currToken.text}'`
             });
-            return this.parser.index++;
+            return this._parser.index++;
         }
-        let newExpression = new ValueExpressionFactory(this.parser, (b) => this.body.push(b));
+        let newExpression = new ValueExpressionFactory(this._parser, (b) => this.body.push(b));
         newExpression.insideParenthesis = true;
-        this.parser.state.push(newExpression);
+        this._parser.state.push(newExpression);
     };
 
     body: ValueExpression[] = [];
     flush = () => {
-        this.end = this.parser.currToken.end;
-        this.text = this.parser.text.substring(this.start, this.end);
-        this.parser.state.splice(this.parser.state.findIndex(el => el === this, 1));
+        this.end = this._parser.currToken.end;
+        this.text = this._parser.text.substring(this.start, this.end);
+        this._parser.state.splice(this._parser.state.findIndex(el => el === this, 1));
     };
 
     constructor(token: Token, parser: Parser) {
         this.start = token.start;
-        this.parser = parser;
+        this._parser = parser;
         this.head = token;
-        this.parser.index++;
+        this._parser.index++;
     }
 }
 
@@ -397,7 +419,7 @@ export class TableDereference implements BaseToken {
                 parser.problems.push({
                     start: token.start,
                     end: token.end,
-                    message: `Invalid identifier, '${token}' is a reserved keyword`
+                    message: `Invalid identifier, '${token.text}' is a reserved keyword`
                 });
             }
             this.right = currToken;
@@ -406,7 +428,7 @@ export class TableDereference implements BaseToken {
             parser.problems.push({
                 start: token.start,
                 end: token.end,
-                message: `Token '${token}' is an invalid identifier`
+                message: `Token '${token.text}' is an invalid identifier`
             });
         }
         let lastToken = parser.tokenOffset(-1);

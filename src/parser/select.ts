@@ -15,10 +15,10 @@ function checkSelectOrder(select: SelectStatement, el: string) {
         throw new Error(`Unknown Select Element: ${el}`);
     }
     if (select.orderIndex! === orderIndex + 1) {
-        throw new TokenError(select.parser.currToken, `Duplicate ${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in select statement`);
+        throw new TokenError(select._parser.currToken, `Duplicate ${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in select statement`);
     }
     if (select.orderIndex! > orderIndex) {
-        throw new TokenError(select.parser.currToken, `${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in incorrect order on select statement`);
+        throw new TokenError(select._parser.currToken, `${SELECT_ORDER[orderIndex][1] ?? `${el} clause`} in incorrect order on select statement`);
     }
     return orderIndex + 1;
 }
@@ -31,15 +31,15 @@ export class SelectStatement extends Statement implements ParenthesisBody {
     orderIndex?: number;
     parse() {
         this.orderIndex ??= 0;
-        const currToken = this.parser.currToken;
+        const currToken = this._parser.currToken;
         let end = false;
         if (this.insideParenthesis && currToken.type === LexerType.RParen) {
             end = true;
-            this.parser.index--;
+            this._parser.index--;
         }
         if (currToken.type === LexerType.EOF || currToken.type === LexerType.DotColon) {
             if (this.insideParenthesis) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: this.start,
                     end: currToken.end,
                     message: 'Unclosed Subquery',
@@ -49,37 +49,37 @@ export class SelectStatement extends Statement implements ParenthesisBody {
         }
         if (end) {
             if (!this.from) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: this.start,
                     end: currToken.end,
                     message: 'Missing "FROM" expression in "SELECT" statement',
                 });
             }
-            this.end = this.parser.currToken.end;
-            this.parser.index++;
-            this.text = this.parser.text.substring(this.start, this.end);
+            this.end = this._parser.currToken.end;
+            this._parser.index++;
+            this.text = this._parser.text.substring(this.start, this.end);
             return this.flush();
         }
 
         const tokenText = currToken.text.toUpperCase();
         if (tokenText === 'FIRST') {
             this.orderIndex = checkSelectOrder(this, 'first');
-            this.first = new SelectFirst(this.parser);
-            return this.parser.state.push(this.first);
+            this.first = new SelectFirst(this._parser);
+            return this._parser.state.push(this.first);
         }
         if (tokenText === 'SKIP') {
             this.orderIndex = checkSelectOrder(this, 'skip');
-            this.skip = new SelectFirst(this.parser);
-            return this.parser.state.push(this.skip);
+            this.skip = new SelectFirst(this._parser);
+            return this._parser.state.push(this.skip);
         }
         if (currToken.type === LexerType.Asterisk) {
             this.orderIndex = checkSelectOrder(this, 'columnList');
-            return this.star = new SelectStar(this.parser);
+            return this.star = new SelectStar(this._parser);
         }
         if (tokenText === 'FROM') {
             if (this.columnList.length === 0 && !this.star) {
-                this.parser.problems.push({
-                    start: this.parser.index,
+                this._parser.problems.push({
+                    start: this._parser.index,
                     end: currToken.end,
                     message: 'No Columns in "SELECT" statement'
                 });
@@ -87,32 +87,32 @@ export class SelectStatement extends Statement implements ParenthesisBody {
             } else {
                 this.orderIndex = checkSelectOrder(this, 'from');
             }
-            const newFrom = new FromSelect(this.parser);
-            this.parser.state.push(newFrom);
+            const newFrom = new FromSelect(this._parser);
+            this._parser.state.push(newFrom);
             return this.from = newFrom;
         }
         if (tokenText === 'WHERE') {
             this.orderIndex = checkSelectOrder(this, 'where');
-            const newWhere = new Where(this.parser);
-            this.parser.state.push(newWhere);
+            const newWhere = new Where(this._parser);
+            this._parser.state.push(newWhere);
             return this.where = newWhere;
         }
         if (tokenText === 'GROUP') {
             this.orderIndex = checkSelectOrder(this, 'groupBy');
-            const newGroupBy = new GroupBy(this.parser);
-            this.parser.state.push(newGroupBy);
+            const newGroupBy = new GroupBy(this._parser);
+            this._parser.state.push(newGroupBy);
             return this.groupBy = newGroupBy;
         }
         if (this.columnList.length === 0 && !this.star) {
             this.orderIndex = checkSelectOrder(this, 'columnList');
             return this.addNewColumn();
         }
-        throw new TokenError(this.parser.currToken);
+        throw new TokenError(this._parser.currToken);
     };
 
     addNewColumn() {
-        const newColumn = new OutputColumn(this.parser, this);
-        this.parser.state.push(newColumn);
+        const newColumn = new OutputColumn(this._parser, this);
+        this._parser.state.push(newColumn);
         this.columnList.push(newColumn);
     }
 
@@ -130,7 +130,7 @@ export class SelectStatement extends Statement implements ParenthesisBody {
 
     constructor(parser: Parser, start?: number, subQuery?: boolean) {
         super(parser, start, subQuery);
-        this.parser.index++;
+        this._parser.index++;
     }
 }
 
@@ -144,29 +144,29 @@ abstract class FirstAndSkip extends BaseState {
 
     parse = () => {
         if (this.delimiter) return this.flush();
-        if (this.parser.currToken.type === LexerType.LParen) {
-            let token = this.parser.currToken;
-            let parens = new ExpressionParenthesis(token, this.parser);
-            this.parser.state.push(parens);
+        if (this._parser.currToken.type === LexerType.LParen) {
+            let token = this._parser.currToken;
+            let parens = new ExpressionParenthesis(token, this._parser);
+            this._parser.state.push(parens);
             this.delimiter = parens;
 
-        } else if (this.parser.currToken.type === LexerType.Variable) {
-            this.parser.index++;
-            this.delimiter = this.parser.currToken;
+        } else if (this._parser.currToken.type === LexerType.Variable) {
+            this._parser.index++;
+            this.delimiter = this._parser.currToken;
         } else {
-            if (LITERAL.has(this.parser.currToken.type)) {
-                if (this.parser.currToken.type !== LexerType.Integer) {
-                    this.parser.problems.push({
-                        start: this.parser.currToken.start,
-                        end: this.parser.currToken.end,
-                        message: `Argument literal must be an integer, found ${this.parser.currToken.type}`
+            if (LITERAL.has(this._parser.currToken.type)) {
+                if (this._parser.currToken.type !== LexerType.Integer) {
+                    this._parser.problems.push({
+                        start: this._parser.currToken.start,
+                        end: this._parser.currToken.end,
+                        message: `Argument literal must be an integer, found ${this._parser.currToken.type}`
                     });
                 }
-                this.delimiter = this.parser.currToken;
-                this.parser.index++;
+                this.delimiter = this._parser.currToken;
+                this._parser.index++;
             } else {
-                this.delimiter = this.parser.currToken;
-                this.parser.problems.push({
+                this.delimiter = this._parser.currToken;
+                this._parser.problems.push({
                     start: this.delimiter.start,
                     end: this.delimiter.end,
                     message: `Expected ${this.text.toUpperCase()} argument, found: "${this.delimiter.text}"`
@@ -180,7 +180,7 @@ abstract class FirstAndSkip extends BaseState {
 
     constructor(parser: Parser) {
         super(parser);
-        this.text = this.parser.currToken.text;
+        this.text = this._parser.currToken.text;
         parser.index++;
     }
 }
@@ -210,58 +210,58 @@ class JoinFrom extends BaseState {
     type = ParserType.Join;
     parse() {
         if (!this.source && !this.joinType) {
-            if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
-                if (this.parser.currToken.text.toUpperCase() === 'JOIN') {
+            if (JoinFrom.validJoinTokens.has(this._parser.currToken.text.toUpperCase())) {
+                if (this._parser.currToken.text.toUpperCase() === 'JOIN') {
                     this.joinType = 'LEFT';
-                } else if (this.parser.currToken.text.toUpperCase() === 'OUTER') {
+                } else if (this._parser.currToken.text.toUpperCase() === 'OUTER') {
                     this.joinType = 'LEFT';
-                    this.parser.index++;
+                    this._parser.index++;
                 } else {
-                    if (this.parser.currToken.text.toUpperCase() === 'OUTER') {
-                        this.parser.index++;
-                        if (!JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
-                            throw new TokenError(this.parser.currToken, `"${this.parser.currToken.text}" is not a valid JOIN type`);
+                    if (this._parser.currToken.text.toUpperCase() === 'OUTER') {
+                        this._parser.index++;
+                        if (!JoinFrom.validJoinTokens.has(this._parser.currToken.text.toUpperCase())) {
+                            throw new TokenError(this._parser.currToken, `"${this._parser.currToken.text}" is not a valid JOIN type`);
                         }
                     }
-                    this.joinType = this.parser.currToken.text as JoinType;
-                    this.parser.index++;
+                    this.joinType = this._parser.currToken.text as JoinType;
+                    this._parser.index++;
                 }
 
-                if (this.parser.currToken.text.toUpperCase() !== 'JOIN') {
-                    throw new TokenError(this.parser.currToken, `Expected "JOIN" found ${this.parser.currToken}`);
+                if (this._parser.currToken.text.toUpperCase() !== 'JOIN') {
+                    throw new TokenError(this._parser.currToken, `Expected "JOIN" found ${this._parser.currToken}`);
                 }
-                this.parser.index++;
+                this._parser.index++;
                 return;
-            } else if (['CROSS'].includes(this.parser.currToken.text.toUpperCase())) {
+            } else if (['CROSS'].includes(this._parser.currToken.text.toUpperCase())) {
                 // TODO: CROSS and NATURAL joins
                 throw new Error('CROSS joins are not implemented');
             } else {
-                throw new TokenError(this.parser.currToken, 'Unexpected Token: ' + this.parser.currToken.text);
+                throw new TokenError(this._parser.currToken, 'Unexpected Token: ' + this._parser.currToken.text);
             }
         }
         if (!this.source) {
-            const source = table(this.parser);
-            this.parser.state.push(source);
+            const source = table(this._parser);
+            this._parser.state.push(source);
             this.source = source;
             return;
         }
         if (!this.condition) {
-            switch (this.parser.currToken.text.toUpperCase()) {
+            switch (this._parser.currToken.text.toUpperCase()) {
                 case 'ON':
-                    this.parser.index++;
-                    this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
+                    this._parser.index++;
+                    this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.condition = b));
                     return;
                 case 'USING':
-                    this.parser.index++;
-                    if (this.parser.currToken.type !== LexerType.LParen) {
-                        throw new TokenError(this.parser.currToken, `Expected '(', found ${this.parser.currToken}`);
+                    this._parser.index++;
+                    if (this._parser.currToken.type !== LexerType.LParen) {
+                        throw new TokenError(this._parser.currToken, `Expected '(', found ${this._parser.currToken.text}`);
                     }
-                    this.condition = new JoinColumnList(this.parser);
-                    this.parser.state.push(this.condition);
-                    this.parser.index++;
+                    this.condition = new JoinColumnList(this._parser);
+                    this._parser.state.push(this.condition);
+                    this._parser.index++;
                     return;
                 default:
-                    throw new TokenError(this.parser.currToken, `Expected 'USING' or 'ON' clause, found ${this.parser.currToken}`);
+                    throw new TokenError(this._parser.currToken, `Expected 'USING' or 'ON' clause, found ${this._parser.currToken.text}`);
             }
         }
         this.end = this.condition.end;
@@ -279,30 +279,30 @@ class JoinColumnList extends BaseState {
     type = ParserType.JoinColumnList;
     parse() {
         while (true) {
-            const currToken = this.parser.currToken;
+            const currToken = this._parser.currToken;
             if (IDENTIFIER.has(currToken.type)) {
                 if (isRegularIdentifier(currToken)) {
                     if (currToken.isReserved) {
-                        tokenError(this.parser, `Invalid alias, '%s' is a reserved keyword`);
+                        tokenError(this._parser, `Invalid alias, '%s' is a reserved keyword`);
                     } else if (currToken.isKeyword) {
-                        nextTokenError(this.parser, `'%s' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`, DiagnosticSeverity.Warning);
+                        nextTokenError(this._parser, `'%s' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`, DiagnosticSeverity.Warning);
                     }
                 }
                 this.columns.push(currToken);
-                this.parser.index++;
+                this._parser.index++;
             }
-            if (this.parser.currToken.type === LexerType.Comma) {
-                this.parser.index++;
+            if (this._parser.currToken.type === LexerType.Comma) {
+                this._parser.index++;
                 continue;
             }
-            if (this.parser.currToken.type === LexerType.RParen) {
-                this.parser.index++;
+            if (this._parser.currToken.type === LexerType.RParen) {
+                this._parser.index++;
                 break;
             }
-            throw new TokenError(this.parser.currToken);
+            throw new TokenError(this._parser.currToken);
         }
-        this.end = this.parser.tokenOffset(-1).end;
-        this.text = this.parser.currText.substring(this.start, this.end);
+        this.end = this._parser.tokenOffset(-1).end;
+        this.text = this._parser.currText.substring(this.start, this.end);
         return this.flush();
     }
 }
@@ -315,25 +315,25 @@ class FromSelect extends BaseState {
     source?: Table;
     type = ParserType.From;
     parse() {
-        if (JoinFrom.validJoinTokens.has(this.parser.currToken.text.toUpperCase())) {
-            let newJoin = new JoinFrom(this.parser);
-            this.parser.state.push(newJoin);
+        if (JoinFrom.validJoinTokens.has(this._parser.currToken.text.toUpperCase())) {
+            let newJoin = new JoinFrom(this._parser);
+            this._parser.state.push(newJoin);
             this.joins.push(newJoin);
         } else if (this.joins.length || this.source) {
-            let lastToken = this.parser.tokenOffset(-1);
+            let lastToken = this._parser.tokenOffset(-1);
             this.end = lastToken.end;
-            this.text = this.parser.text.substring(this.start, this.end);
+            this.text = this._parser.text.substring(this.start, this.end);
             this.flush();
         } else {
-            const source = table(this.parser);
-            this.parser.state.push(source);
+            const source = table(this._parser);
+            this._parser.state.push(source);
             this.source = source;
         }
     }
 
     constructor(parser: Parser) {
         super(parser);
-        this.parser.index++;
+        this._parser.index++;
     }
 }
 
@@ -358,10 +358,10 @@ export class UnknownTable extends BaseTable {
 
     type = ParserType.UnknownTable;
     parse() {
-        const token = this.parser.currToken;
-        this.start = this.parser.index;
+        const token = this._parser.currToken;
+        this.start = this._parser.index;
         this.identifier = token;
-        this.parser.index++;
+        this._parser.index++;
 
         this.parseAlias();
 
@@ -375,18 +375,18 @@ export class DerivedTable extends BaseTable implements State {
     type = ParserType.DerivedTable;
     parse() {
         if (this.paren) {
-            const lastToken = this.parser.tokenOffset(-1);
+            const lastToken = this._parser.tokenOffset(-1);
             if (lastToken.type === LexerType.RParen) {
                 this.end = lastToken.end;
-                this.text = this.parser.text.substring(this.start, this.end);
+                this.text = this._parser.text.substring(this.start, this.end);
                 this.parseAlias();
                 this.flush();
             } else {
-                nextTokenError(this.parser, `Unknown Token: %s`);
+                nextTokenError(this._parser, `Unknown Token: %s`);
             }
         } else {
-            this.paren = new ExpressionParenthesis(this.parser.currToken, this.parser);
-            this.parser.state.push(this.paren);
+            this.paren = new ExpressionParenthesis(this._parser.currToken, this._parser);
+            this._parser.state.push(this.paren);
         }
     }
 }
@@ -408,7 +408,7 @@ class Where extends BaseState {
     condition?: ValueExpression;
     parse() {
         if (!this.condition) {
-            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
+            this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.condition = b));
             return;
         }
         this.end = this.condition.end;
@@ -417,7 +417,7 @@ class Where extends BaseState {
 
     constructor(parser: Parser) {
         super(parser);
-        this.parser.index++;
+        this._parser.index++;
     }
 }
 
@@ -428,10 +428,10 @@ export class GroupBy extends BaseState {
     public type = ParserType.GroupBy;
 
     flush(): void {
-        this.end = this.parser.tokenOffset(-1).end;
-        this.text = this.parser.text.substring(this.start, this.end);
+        this.end = this._parser.tokenOffset(-1).end;
+        this.text = this._parser.text.substring(this.start, this.end);
         if (!this.columns.length) {
-            this.parser.problems.push({
+            this._parser.problems.push({
                 start: this.start,
                 end: this.end,
                 severity: DiagnosticSeverity.Error,
@@ -441,18 +441,18 @@ export class GroupBy extends BaseState {
         super.flush();
     }
     parse() {
-        const currToken = this.parser.currToken;
+        const currToken = this._parser.currToken;
         if (currToken.type === LexerType.Comma) {
             if (this.columns.length === 0) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: this.start,
                     end: currToken.end,
                     severity: DiagnosticSeverity.Error,
                     message: `Unexpected Token: ','`
                 });
             }
-            this.parser.index++;
-            return this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.columns.push(b)));
+            this._parser.index++;
+            return this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.columns.push(b)));
         }
         if (currToken.text.toUpperCase() === 'HAVING') {
             if (this.having) {
@@ -461,25 +461,25 @@ export class GroupBy extends BaseState {
             if (this.columns.length === 0) {
                 throw new TokenError(currToken, `Empty 'GROUP BY' clause`);
             }
-            const newHaving = new HavingClause(this.parser);
-            this.parser.state.push(newHaving);
+            const newHaving = new HavingClause(this._parser);
+            this._parser.state.push(newHaving);
             return this.having = newHaving;
         }
         if (this.columns.length === 0 && !isEndOfStatement(currToken)) {
-            return this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.columns.push(b)));
+            return this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.columns.push(b)));
         }
         return this.flush();
     }
 
     constructor(parser: Parser) {
         super(parser);
-        this.start = this.parser.currToken.start;
+        this.start = this._parser.currToken.start;
 
-        this.parser.index++;
-        if (this.parser.currToken.text.toUpperCase() !== 'BY') {
-            throw new TokenError(this.parser.currToken, `Expected 'BY', found ${this.parser.currToken.text}`);
+        this._parser.index++;
+        if (this._parser.currToken.text.toUpperCase() !== 'BY') {
+            throw new TokenError(this._parser.currToken, `Expected 'BY', found ${this._parser.currToken.text}`);
         }
-        this.parser.index++;
+        this._parser.index++;
     }
 
     having?: HavingClause;
@@ -491,7 +491,7 @@ class HavingClause extends BaseState {
     condition?: ValueExpression;
     parse() {
         if (!this.condition) {
-            this.parser.state.push(new ValueExpressionFactory(this.parser, (b) => this.condition = b));
+            this._parser.state.push(new ValueExpressionFactory(this._parser, (b) => this.condition = b));
             return;
         }
         this.end = this.condition.end;
@@ -500,6 +500,6 @@ class HavingClause extends BaseState {
 
     constructor(parser: Parser) {
         super(parser);
-        this.parser.index++;
+        this._parser.index++;
     }
 }

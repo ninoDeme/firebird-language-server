@@ -72,8 +72,9 @@ export class Parser {
                     message: e.message,
                     severity: 1
                 });
+            } else {
+                console.error(e);
             }
-            console.error(e);
         }
         return this.parsed;
     }

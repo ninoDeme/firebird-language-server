@@ -4,20 +4,20 @@ import {IDENTIFIER, ParserType, TokenType} from './symbols';
 import {LexedRegularIdentifier} from './lexer';
 
 export abstract class BaseState implements State, Token {
-    parser: Parser;
+    _parser: Parser;
     static match: RegExp;
     parse() {
         throw new Error('not implemented');
     }
     flush() {
-        this.parser.state.splice(this.parser.state.findIndex(el => el === this), 1);
+        this._parser.state.splice(this._parser.state.findIndex(el => el === this), 1);
     }
     text!: string;
     start!: number;
     end!: number;
     abstract type: TokenType;
     constructor(parser: Parser, start?: number) {
-        this.parser = parser;
+        this._parser = parser;
         this.start = start ?? parser.currToken.start;
     }
 }
@@ -42,10 +42,10 @@ export class BaseTable extends BaseState implements Table {
     type = ParserType.Table
 
     parse() {
-        const token = this.parser.currToken;
+        const token = this._parser.currToken;
         this.start = token.start;
         this.identifier = token;
-        this.parser.index++;
+        this._parser.index++;
 
         this.parseAlias();
 
@@ -57,16 +57,16 @@ export class BaseTable extends BaseState implements Table {
     parseAlias() {
 
         let hasAS = false;
-        if (this.parser.currToken.text.toUpperCase() === 'AS') {
-            this.parser.index++;
+        if (this._parser.currToken.text.toUpperCase() === 'AS') {
+            this._parser.index++;
             hasAS = true;
         }
 
-        const token = this.parser.currToken;
+        const token = this._parser.currToken;
 
         if (IDENTIFIER.has(token.type) && !(token as LexedRegularIdentifier).isReserved) {
             if ((token as LexedRegularIdentifier).isKeyword) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: token.start,
                     end: token.end,
                     message: `'${token.text}' is a keyword and may become reserved in the future, consider changing it, or surrounding it with double quotes`,
@@ -74,20 +74,22 @@ export class BaseTable extends BaseState implements Table {
                 });
             }
             this.alias = token;
-            this.parser.index++;
+            this._parser.index++;
         } else if (hasAS) {
             if ((token as LexedRegularIdentifier).isReserved) {
-                this.parser.problems.push({
+                this._parser.problems.push({
                     start: token.start,
                     end: token.end,
-                    message: `Invalid alias, '${token}' is a reserved keyword`
+                    message: `Invalid alias, '${token.text}' is a reserved keyword`
                 });
                 this.alias = token;
-                this.parser.index++;
+                if (!['ON', 'USING'].includes(token.text.toUpperCase())) {
+                    this._parser.index++;
+                }
             } else {
-                this.parser.problems.push({
-                    start: this.parser.index,
-                    end: this.parser.index,
+                this._parser.problems.push({
+                    start: this._parser.index,
+                    end: this._parser.index,
                     message: `Missing or invalid Alias`
                 });
             }
@@ -95,13 +97,13 @@ export class BaseTable extends BaseState implements Table {
     }
 }
 
-export interface Table {
+export interface Table extends Token {
     identifier?: Token;
     alias?: Token;
 }
 
 export interface State {
-    parser: Parser;
+    _parser: Parser;
     parse: () => any;
     flush: () => any;
 }
@@ -113,11 +115,14 @@ export interface Token {
     type: TokenType;
 }
 
+export interface Context {
+    token: Token;
+    property?: string;
+}
 
 export interface FunctionBody extends State {
     insideFunction: boolean;
 }
-
 
 export interface ProblemFix {
     message: string;

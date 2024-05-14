@@ -32,6 +32,8 @@ export class Lexer {
 
     problems: Problem[] = [];
 
+    cursor: number | null = null;
+
     private _currText: undefined | string;
     get currText() {
         return this._currText ?? (this._currText = this.text.substring(this.index));
@@ -44,6 +46,9 @@ export class Lexer {
         } catch (e) {
             console.error(e);
         }
+
+        this.cursor = this.text.search(/\|/);
+        this.text = this.text.replace(/\|/, "");
 
         let match;
         do {

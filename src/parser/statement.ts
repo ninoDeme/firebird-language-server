@@ -9,10 +9,10 @@ export abstract class Statement extends BaseState implements ParenthesisBody {
     insideParenthesis: boolean;
 
     flush(state?: State) {
-        this.parser.state.splice(this.parser.state.findIndex(el => el === state ?? this, 1))[0];
-        this.parser.parsed.push(this);
-        if (this.parser.index < this.parser.tokens.length && this.parser.state.length === 0) {
-            this.parser.state.push(statement(this.parser));
+        this._parser.state.splice(this._parser.state.findIndex(el => el === state ?? this, 1))[0];
+        this._parser.parsed.push(this);
+        if (this._parser.index < this._parser.tokens.length && this._parser.state.length === 0) {
+            this._parser.state.push(statement(this._parser));
         }
     }
     constructor(parser: Parser, start?: number, insideParenthesis?: boolean) {
@@ -24,16 +24,16 @@ export abstract class Statement extends BaseState implements ParenthesisBody {
 
 export class EmptyStatement extends Statement {
     parse = () => {
-        this.end = this.parser.index;
-        this.text = this.parser.text.substring(this.start, this.end);
-        this.parser.index++;
+        this.end = this._parser.index;
+        this.text = this._parser.text.substring(this.start, this.end);
+        this._parser.index++;
         this.flush();
     };
 
     type = ParserType.EmptyStatement
     constructor(parser: Parser, start?: number) {
         super(parser, start);
-        this.parser.index++;
+        this._parser.index++;
     }
 }
 
@@ -41,16 +41,16 @@ export class UnknownStatement extends Statement {
     tokens: Token[] = [];
     type = ParserType.UnknownStatement
     parse() {
-        let token = this.parser.currToken;
+        let token = this._parser.currToken;
         if (token.type === LexerType.RegularIdentifier) {
-            this.parser.problems.push({
+            this._parser.problems.push({
                 start: token.start,
                 end: token.end,
                 severity: DiagnosticSeverity.Error,
                 message: `"${token.text}" is not a valid statement type`
             });
         } else {
-            this.parser.problems.push({
+            this._parser.problems.push({
                 start: token.start,
                 end: token.end,
                 severity: DiagnosticSeverity.Error,
@@ -59,11 +59,11 @@ export class UnknownStatement extends Statement {
         }
         do {
             this.tokens.push(token);
-            this.parser.index++;
-            token = this.parser.currToken;
+            this._parser.index++;
+            token = this._parser.currToken;
         } while (!(isEndOfStatement(token, this.insideParenthesis)))
         this.end = token.end;
-        this.text = this.parser.text.substring(this.start, this.end);
+        this.text = this._parser.text.substring(this.start, this.end);
         this.flush();
     }
 }
